@@ -84,6 +84,7 @@ Includes a terminal mode for advanced users who prefer the full CLI experience.
 ### Operations
 
 - **In-app upgrades** — update OpenClaw via npm without redeploying the container
+- **Shared runtime install** — first boot seeds OpenClaw into `/data/.npm-global` so both `/openclaw` and `/lite` use the same persistent npm-managed copy
 - **Backup and restore** — download/upload configuration snapshots
 - **Auto-restart on crash** with 5-second delay
 - **Graceful shutdown** via SIGTERM with 10-second kill timeout

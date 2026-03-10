@@ -1565,11 +1565,15 @@ const { middleware: proxyMiddleware, upgradeHandler } = createProxy(getGatewayTo
 // Protect all /openclaw paths (SPA, assets, API) with setup password
 app.use('/openclaw', authMiddleware);
 
-// Redirect /openclaw to include gateway token so the SPA can authenticate
+// Redirect /openclaw (and subpaths on refresh) to include gateway token so the SPA can authenticate
 const openclawHandler = (req, res, next) => {
-  // If token already in query, let the proxy serve the SPA
-  // (avoids redirect loop since Express 5 strict:false matches /openclaw/ too)
+  // If token already in query, let the proxy serve the request
   if (req.query.token) {
+    return next();
+  }
+  // Only redirect navigation requests (HTML pages), not assets/API/XHR
+  const acceptsHtml = req.headers.accept && req.headers.accept.includes('text/html');
+  if (!acceptsHtml) {
     return next();
   }
   if (!isGatewayRunning()) {
@@ -1579,11 +1583,15 @@ const openclawHandler = (req, res, next) => {
     });
   }
   const token = getGatewayToken();
-  res.redirect(`/openclaw/?token=${encodeURIComponent(token)}`);
+  // Preserve existing query params (e.g. ?session=...) and add token
+  const url = new URL(req.originalUrl, `http://${req.headers.host}`);
+  url.searchParams.set('token', token);
+  res.redirect(url.pathname + url.search);
 };
 
 app.get('/openclaw', openclawHandler);
 app.post('/openclaw', openclawHandler);
+app.get('/openclaw/{*path}', openclawHandler);  // catch subpath refreshes like /openclaw/chat?session=...
 
 // Proxy all other requests to gateway (when running)
 // Note: Using no path argument to avoid Express 5 stripping req.url

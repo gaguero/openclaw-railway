@@ -1569,9 +1569,12 @@ const { middleware: proxyMiddleware, upgradeHandler } = createProxy(getGatewayTo
 // Protect all /openclaw paths (SPA, assets, API) with setup password
 app.use('/openclaw', authMiddleware);
 
-// Redirect /openclaw (and subpaths on refresh) to include gateway token so the SPA can authenticate
+// Redirect /openclaw (and subpaths on refresh) to include gateway token so the SPA can authenticate.
+// v2026.3.13+ reads the token from URL fragment (#token=xxx), not query params.
+// We keep ?token= in the query as a loop-breaker (fragments aren't sent to the server)
+// and for backward compat with older SPA versions.
 const openclawHandler = (req, res, next) => {
-  // If token already in query, let the proxy serve the request
+  // If token already in query, let the proxy serve the request (prevents redirect loop)
   if (req.query.token) {
     return next();
   }
@@ -1590,7 +1593,8 @@ const openclawHandler = (req, res, next) => {
   // Preserve existing query params (e.g. ?session=...) and add token
   const url = new URL(req.originalUrl, `http://${req.headers.host}`);
   url.searchParams.set('token', token);
-  res.redirect(url.pathname + url.search);
+  // Append token as URL fragment for v2026.3.13+ SPA (reads #token=<value>, stores in sessionStorage)
+  res.redirect(url.pathname + url.search + '#token=' + encodeURIComponent(token));
 };
 
 app.get('/openclaw', openclawHandler);

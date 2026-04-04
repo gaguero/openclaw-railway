@@ -19,6 +19,30 @@ const MAX_PARSE_CHARS = 2_000_000;
 const MAX_INGEST_ROWS = 5000;
 
 /**
+ * Normalize `source` from JSON body (models often send "Preview", smart quotes, or trailing junk).
+ * @param {unknown} raw
+ * @returns {string} canonical key or '' if unknown
+ */
+export function normalizeWaJsonlSourceKey(raw) {
+  if (typeof raw !== 'string') return '';
+  let s = raw.trim();
+  s = s.replace(/^\uFEFF/, '');
+  s = s.replace(/^["'«]+|["'»]+$/g, '');
+  s = s.trim().toLowerCase();
+  if (s === 'default' || s === 'parsed-preview' || s === 'jsonl' || s === 'jsonl-preview') {
+    return 'preview';
+  }
+  return s;
+}
+
+function dryRunFromBody(body) {
+  const v = body?.dry_run;
+  if (typeof v === 'boolean') return v;
+  const t = String(v ?? '').toLowerCase();
+  return t === '1' || t === 'true' || t === 'yes';
+}
+
+/**
  * Map one JSONL record from wa-groups parser → body for insertBotObservation.
  * @param {object} row
  * @returns {object|null} null = skip
@@ -71,8 +95,8 @@ export async function nabotoWaJsonlIngestHandler(req, res) {
   }
 
   const body = req.body || {};
-  const sourceKey = typeof body.source === 'string' ? body.source.trim() : '';
-  const dryRun = Boolean(body.dry_run);
+  const sourceKey = normalizeWaJsonlSourceKey(body.source);
+  const dryRun = dryRunFromBody(body);
   let limit = parseInt(String(body.limit ?? ''), 10);
   if (Number.isNaN(limit) || limit < 1) limit = MAX_INGEST_ROWS;
   limit = Math.min(limit, MAX_INGEST_ROWS);
@@ -82,6 +106,7 @@ export async function nabotoWaJsonlIngestHandler(req, res) {
       ok: false,
       error: 'Invalid source',
       allowed: Object.keys(WA_JSONL_SOURCES),
+      hint: 'JSON body must be application/json, e.g. {"source":"preview","dry_run":true}. Use lowercase preview.',
     });
   }
 

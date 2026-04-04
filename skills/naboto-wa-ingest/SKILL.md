@@ -45,6 +45,9 @@ El archivo **`scripts/fixtures/_parsed-preview.jsonl`** va **dentro de la imagen
 
 **Dry-run** (solo cuenta, no inserta):
 
+- **`source` debe ser el string `preview` en minúsculas** (el servidor acepta alias `default`, `jsonl`, `parsed-preview` por si el modelo se equivoca).
+- **Obligatorio:** `-H "Content-Type: application/json"`; si falta, el body llega vacío y responde `Invalid source`.
+
 ```bash
 curl -sS -X POST -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" \
   -H "Content-Type: application/json" \

@@ -1,6 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { jsonlRowToObservationBody, WA_JSONL_SOURCES } from '../src/naboto-wa-ingest-admin.js';
+import {
+  jsonlRowToObservationBody,
+  WA_JSONL_SOURCES,
+  normalizeWaJsonlSourceKey,
+} from '../src/naboto-wa-ingest-admin.js';
 
 describe('jsonlRowToObservationBody', () => {
   it('builds body for standard row', () => {
@@ -46,5 +50,22 @@ describe('jsonlRowToObservationBody', () => {
 describe('WA_JSONL_SOURCES', () => {
   it('includes preview key', () => {
     assert.ok(WA_JSONL_SOURCES.preview);
+  });
+});
+
+describe('normalizeWaJsonlSourceKey', () => {
+  it('lowercases Preview', () => {
+    assert.equal(normalizeWaJsonlSourceKey('Preview'), 'preview');
+  });
+  it('strips smart quotes', () => {
+    assert.equal(normalizeWaJsonlSourceKey('«preview»'), 'preview');
+  });
+  it('maps aliases to preview', () => {
+    assert.equal(normalizeWaJsonlSourceKey('JSONL'), 'preview');
+    assert.equal(normalizeWaJsonlSourceKey('parsed-preview'), 'preview');
+  });
+  it('unknown values lowercased and must match WA_JSONL_SOURCES', () => {
+    assert.equal(normalizeWaJsonlSourceKey('Staging'), 'staging');
+    assert.equal(WA_JSONL_SOURCES[normalizeWaJsonlSourceKey('Staging')], undefined);
   });
 });

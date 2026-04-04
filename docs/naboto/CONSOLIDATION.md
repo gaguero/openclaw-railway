@@ -4,7 +4,7 @@
 
 - **Identidad** en config: nombre *NaBoTo*, emoji 🏨 — el **wrapper** aplica `ensureNabotoAgentIdentity` en cada arranque del gateway: si el agente por defecto no tiene nombre o tiene un nombre genérico (`OpenClaw`, `Assistant`, etc.), se escribe NaBoTo en `openclaw.json`. Un nombre **personalizado** no se pisa.
 - **Personalidad y reglas** en `SOUL.md` del workspace (inyectado al contexto del agente).
-- **Skill** `naboto-query-context` disponible desde `/bundled-skills` (vía `skills.load.extraDirs`).
+- **Skill** `naboto-query-context` disponible desde `/bundled-skills` (vía `skills.load.extraDirs`). El arranque del wrapper escribe `skills.entries['naboto-query-context'].env.NABOTO_WRAPPER_PORT` (= `PORT` de Railway, típ. **8080**) para que `exec` + `curl` no dependan de `$PORT` en el sandbox.
 - **Chat web** en `/openclaw` habla con el mismo agente; **WhatsApp** es opcional y se añade después con `channels.whatsapp`.
 
 ## Paso 1 — `SOUL.md` en el workspace

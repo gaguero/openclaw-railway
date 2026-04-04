@@ -9,9 +9,9 @@ description: Use when the user asks about recent operational messages (bot_obser
 
 ## Invocación real del shell (no pseudocódigo)
 
-- Tenés que usar la herramienta nativa de **shell del gateway** (en OpenClaw suele llamarse **`exec`**; llamada a herramienta / tool use del asistente), con **un comando shell** (por ejemplo la línea `curl` de abajo). El proceso corre en el mismo contenedor que el wrapper; `$PORT` y `$OPENCLAW_GATEWAY_TOKEN` ya están en el entorno.
+- Tenés que usar la herramienta nativa de **shell del gateway** (en OpenClaw suele llamarse **`exec`**; llamada a herramienta / tool use del asistente), con **un comando shell** (por ejemplo la línea `curl` de abajo). El proceso corre en el mismo contenedor que el wrapper. Usá **`NABOTO_WRAPPER_PORT`** en la URL (inyectada por config de skill; fallback **8080**); **`OPENCLAW_GATEWAY_TOKEN`** debe estar disponible para `curl`.
 - **Prohibido** poner en el mensaje del asistente: `tool_code`, `print(`, Python, `exec.run_shell`, `run_shell`, ni ningún código que *simule* una herramienta. Eso **no ejecuta nada** y el usuario no ve el JSON.
-- Flujo correcto: (1) tool **`exec`** → comando = `curl -sS -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" "http://127.0.0.1:${PORT}/api/naboto/query/arrivals?from_day=0&to_day=0&limit=50"` (2) leer stdout (3) responder en **español** con el resumen.
+- Flujo correcto: (1) tool **`exec`** → comando = `curl -sS -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" "http://127.0.0.1:${NABOTO_WRAPPER_PORT:-8080}/api/naboto/query/arrivals?from_day=0&to_day=0&limit=50"` (2) leer stdout (3) responder en **español** con el resumen. **No** uses solo `$PORT` en `exec`: en el sandbox del agente a veces no existe; esta imagen define **`NABOTO_WRAPPER_PORT`** (skill `env` + proceso gateway).
 
 ## Prohibido inventar reservas o volcar JSON falso
 
@@ -32,12 +32,12 @@ Autenticación en **cada** request:
 
 `Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN`
 
-Base URL (proceso wrapper en el mismo contenedor): `http://127.0.0.1:${PORT}` — en Railway, `PORT` suele estar definido (si falla, probá `8080`).
+Base URL (proceso **wrapper** `server.js` en el mismo contenedor, no el WS del gateway): `http://127.0.0.1:${NABOTO_WRAPPER_PORT:-8080}`. OpenClaw inyecta **`NABOTO_WRAPPER_PORT`** vía `skills.entries` (Railway: suele ser `8080`). Evitá confundir con el puerto interno del gateway (**18789**).
 
 ### Descubrir endpoints
 
 ```bash
-curl -sS -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" "http://127.0.0.1:${PORT}/api/naboto/query"
+curl -sS -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" "http://127.0.0.1:${NABOTO_WRAPPER_PORT:-8080}/api/naboto/query"
 ```
 
 ### Observaciones ingeridas (`bot_observations`)
@@ -48,17 +48,17 @@ curl -sS -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" "http://127.0.0.1:${
 
 ```bash
 curl -sS -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" \
-  "http://127.0.0.1:${PORT}/api/naboto/query/observations?limit=12&hours=48"
+  "http://127.0.0.1:${NABOTO_WRAPPER_PORT:-8080}/api/naboto/query/observations?limit=12&hours=48"
 
 curl -sS -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" \
-  "http://127.0.0.1:${PORT}/api/naboto/query/observations?group=Guest&hours=24"
+  "http://127.0.0.1:${NABOTO_WRAPPER_PORT:-8080}/api/naboto/query/observations?group=Guest&hours=24"
 ```
 
 ### Últimas corridas Opera → NBDT (`opera_sync_log`)
 
 ```bash
 curl -sS -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" \
-  "http://127.0.0.1:${PORT}/api/naboto/query/opera-sync?limit=5"
+  "http://127.0.0.1:${NABOTO_WRAPPER_PORT:-8080}/api/naboto/query/opera-sync?limit=5"
 ```
 
 ### Llegadas / reservas en ventana de fechas (`reservations` + huésped si existe join)
@@ -67,14 +67,14 @@ Días relativos a **hoy** (`CURRENT_DATE + from_day` … `CURRENT_DATE + to_day`
 
 ```bash
 curl -sS -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" \
-  "http://127.0.0.1:${PORT}/api/naboto/query/arrivals?from_day=0&to_day=7&limit=30"
+  "http://127.0.0.1:${NABOTO_WRAPPER_PORT:-8080}/api/naboto/query/arrivals?from_day=0&to_day=7&limit=30"
 ```
 
 **Solo llegadas con fecha de hoy** (`from_day` y `to_day` = 0 respecto a `CURRENT_DATE`):
 
 ```bash
 curl -sS -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" \
-  "http://127.0.0.1:${PORT}/api/naboto/query/arrivals?from_day=0&to_day=0&limit=50"
+  "http://127.0.0.1:${NABOTO_WRAPPER_PORT:-8080}/api/naboto/query/arrivals?from_day=0&to_day=0&limit=50"
 ```
 
 Si la respuesta trae `ok:false`, no inventes datos: comunicá el error o pedí verificación a OPERATOR/ADMIN.
@@ -91,7 +91,7 @@ Si la respuesta trae `ok:false`, no inventes datos: comunicá el error o pedí v
 
 ```bash
 curl -sS -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" \
-  "http://127.0.0.1:${PORT}/api/naboto/appsheet"
+  "http://127.0.0.1:${NABOTO_WRAPPER_PORT:-8080}/api/naboto/appsheet"
 ```
 
 ### Filas de una tabla (Find + límite server-side)
@@ -100,7 +100,7 @@ El nombre en la URL debe coincidir **exactamente** con un nombre de la allowlist
 
 ```bash
 curl -sS -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" \
-  "http://127.0.0.1:${PORT}/api/naboto/appsheet/find/MiTabla?limit=20"
+  "http://127.0.0.1:${NABOTO_WRAPPER_PORT:-8080}/api/naboto/appsheet/find/MiTabla?limit=20"
 ```
 
 Si `configured:false` o tabla no allowlisted, explicá que falta configuración o el nombre no está habilitado — no inventes filas.

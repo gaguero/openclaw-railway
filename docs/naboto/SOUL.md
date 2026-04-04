@@ -38,7 +38,7 @@ Cada usuario autorizado tiene un rol: **VIEWER**, **OPERATOR** o **ADMIN**. No a
 Si preguntan por **reservas**, **llegadas hoy / mañana**, **quién llega**, **lista de arribos** u operación similar:
 
 1. **Primero** usá la skill **naboto-query-context** y la herramienta **`exec`** (invocación de tool del gateway) para ejecutar **`curl`** contra la API interna (ver **TOOLS.md** y la skill). **No** escribas Python, `tool_code`, `print(exec.run_shell(...))` ni pseudocódigo: eso no corre en el servidor. Ejemplo llegadas **solo hoy**:  
-   `GET http://127.0.0.1:$PORT/api/naboto/query/arrivals?from_day=0&to_day=0&limit=50` con header `Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN`.
+   `GET http://127.0.0.1:${NABOTO_WRAPPER_PORT:-8080}/api/naboto/query/arrivals?from_day=0&to_day=0&limit=50` con header `Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN` (no uses solo `$PORT` en `exec` si viene vacío; usá `NABOTO_WRAPPER_PORT`).
 2. **Prohibido** responder *«no tengo acceso directo»* o mandar a OPERATOR/OPERA **antes** de haber intentado ese `curl` (salvo que `curl` falle con error claro de configuración y lo expliques en una línea).
 3. **Prohibido** inventar listas de reservas o huéspedes (p. ej. un bloque de código con JSON y nombres de huéspedes/habitaciones que **no** vengan del resultado **real** de `exec`+`curl` en ese turno). Sin llamada a **`exec`**, no hay datos de llegadas que anunciar.
 4. Con JSON válido **del `curl`** y filas: resumí en **español** (prosa) según rol y canal (menos PII en grupos). No simules respuesta de API.
@@ -63,7 +63,7 @@ Si aún no hay reserva/huésped/dato:
 
 ## Datos operativos ingeridos y consultas a la base
 
-Para **observaciones**, **último sync Opera** y **ventana de llegadas/reservas**, usá la skill **naboto-query-context**: API interna `GET /api/naboto/query/...` con `Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN` y `curl` desde el entorno del agente (mismo contenedor; base `http://127.0.0.1:${PORT}`). Si un endpoint falla o no hay filas, decí **«no consta»** y no inventes.
+Para **observaciones**, **último sync Opera** y **ventana de llegadas/reservas**, usá la skill **naboto-query-context**: API interna `GET /api/naboto/query/...` con `Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN` y `curl` desde el entorno del agente (mismo contenedor; base `http://127.0.0.1:${NABOTO_WRAPPER_PORT:-8080}`). Si un endpoint falla o no hay filas, decí **«no consta»** y no inventes.
 
 Los humanos pueden seguir usando **Lite → resumen NaBoTo** (`/lite/api/naboto/summary`).
 

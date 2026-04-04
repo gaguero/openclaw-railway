@@ -40,6 +40,28 @@ let logBuffer = [];
 let logIdCounter = 0;
 let gatewayStartTime = null;
 
+/** HTTP port of the Node wrapper (`server.js`), where `/api/naboto/*` lives — not the gateway WS port (18789). */
+function nabotoWrapperHttpPort() {
+  return String(process.env.PORT || '8080');
+}
+
+/**
+ * Merge `skills.entries['naboto-query-context']` with `env.NABOTO_WRAPPER_PORT` so agent `exec` has a port even when `PORT` is stripped in sandbox.
+ * @param {object} [prev]
+ */
+function applyNabotoSkillEntry(prev) {
+  const p = nabotoWrapperHttpPort();
+  const base = prev && typeof prev === 'object' ? prev : {};
+  return {
+    ...base,
+    enabled: true,
+    env: {
+      ...(base.env && typeof base.env === 'object' ? base.env : {}),
+      NABOTO_WRAPPER_PORT: p,
+    },
+  };
+}
+
 /**
  * Buffer a log line from the gateway process
  * @param {'stdout'|'stderr'} stream - Which stream the line came from
@@ -373,9 +395,13 @@ export async function startGateway() {
   if (process.env.DATABASE_URL) {
     config.skills = config.skills || {};
     config.skills.entries = config.skills.entries || {};
-    if (!config.skills.entries['naboto-query-context']) {
-      config.skills.entries['naboto-query-context'] = { enabled: true };
+    const prevNaboto = config.skills.entries['naboto-query-context'];
+    config.skills.entries['naboto-query-context'] = applyNabotoSkillEntry(prevNaboto);
+    if (!prevNaboto) {
       console.log('Auto-enabled naboto-query-context skill (DATABASE_URL is set)');
+    }
+    if (!prevNaboto?.env?.NABOTO_WRAPPER_PORT || prevNaboto.env.NABOTO_WRAPPER_PORT !== nabotoWrapperHttpPort()) {
+      console.log(`naboto-query-context: NABOTO_WRAPPER_PORT=${nabotoWrapperHttpPort()} (for curl in agent exec)`);
     }
   }
 
@@ -535,7 +561,8 @@ export async function startGateway() {
       toolsContent +=
         '\n## NaBoTo / NBDT (Postgres read-only)\n\n' +
         'Hotel data: invoke the **`exec` tool** with a real shell command — `curl` plus header ' +
-        '`Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN` against `http://127.0.0.1:$PORT/api/naboto/query/...`. ' +
+        '`Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN` against `http://127.0.0.1:${NABOTO_WRAPPER_PORT:-8080}/api/naboto/query/...` ' +
+        '(variable set by this image; fallback 8080). ' +
         'Arrivals **today**: path `/api/naboto/query/arrivals?from_day=0&to_day=0&limit=50`. ' +
         'Skill: `naboto-query-context`.\n\n' +
         '**Do not** output Python, `tool_code`, `print(`, or `exec.run_shell` in assistant text; those do not run. ' +
@@ -556,7 +583,7 @@ export async function startGateway() {
         existing +=
           `\n${marker}\n## NaBoTo / NBDT (Postgres read-only)\n\n` +
           'Invoke the **`exec` tool** with a shell `curl` using `Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN` and ' +
-          '`http://127.0.0.1:$PORT/api/naboto/query/arrivals?from_day=0&to_day=0&limit=50` for arrivals today. ' +
+          '`http://127.0.0.1:${NABOTO_WRAPPER_PORT:-8080}/api/naboto/query/arrivals?from_day=0&to_day=0&limit=50` for arrivals today. ' +
           'Skill: `naboto-query-context`.\n';
         updated = true;
       }
@@ -564,7 +591,7 @@ export async function startGateway() {
         existing +=
           `\n${execHintMarker}\n### NaBoTo — ejecutar curl de verdad\n\n` +
           '- Usá la herramienta **`exec`** del gateway (tool use), no texto con `tool_code`, Python, `print(`, ni `exec.run_shell`.\n' +
-          '- Un comando válido (una línea): `curl -sS -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" "http://127.0.0.1:${PORT}/api/naboto/query/arrivals?from_day=0&to_day=0&limit=50"`\n' +
+          '- Un comando válido (una línea): `curl -sS -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" "http://127.0.0.1:${NABOTO_WRAPPER_PORT:-8080}/api/naboto/query/arrivals?from_day=0&to_day=0&limit=50"`\n' +
           '- Después del stdout con JSON, respondé al usuario en español (resumen).\n';
         updated = true;
       }
@@ -574,6 +601,14 @@ export async function startGateway() {
           '- **Prohibido** volcar ` ```json ` o listas de huéspedes/habitaciones que **no** provengan del stdout real del `curl` en ese turno.\n' +
           '- Sin **`exec`** completado, no anuncies llegadas concretas.\n' +
           '- Respondé en **prosa**; los datos operativos vienen solo de la API.\n';
+        updated = true;
+      }
+      const portEnvMarker = '<!-- openclaw-railway: naboto-wrapper-port-env -->';
+      if (!existing.includes(portEnvMarker)) {
+        existing +=
+          `\n${portEnvMarker}\n### NaBoTo — puerto HTTP del wrapper\n\n` +
+          'En `curl` usá `http://127.0.0.1:${NABOTO_WRAPPER_PORT:-8080}/api/naboto/...`. ' +
+          'La variable la define esta imagen en `skills.entries`; `$PORT` puede faltar dentro de `exec`.\n';
         updated = true;
       }
       if (updated) {
@@ -629,6 +664,8 @@ export async function startGateway() {
   ], {
     env: {
       ...process.env,
+      PORT: process.env.PORT || nabotoWrapperHttpPort(),
+      NABOTO_WRAPPER_PORT: nabotoWrapperHttpPort(),
       HOME: '/home/openclaw',
       OPENCLAW_STATE_DIR: stateDir,
       OPENCLAW_WORKSPACE_DIR: workspaceDir,
@@ -962,12 +999,16 @@ async function runPostStartupTasks(configFile, context = '') {
   if (process.env.DATABASE_URL) {
     try {
       const liveConfig = JSON.parse(readFileSync(configFile, 'utf-8'));
-      if (!liveConfig.skills?.entries?.['naboto-query-context']?.enabled) {
-        liveConfig.skills = liveConfig.skills || {};
-        liveConfig.skills.entries = liveConfig.skills.entries || {};
-        liveConfig.skills.entries['naboto-query-context'] = { enabled: true };
+      liveConfig.skills = liveConfig.skills || {};
+      liveConfig.skills.entries = liveConfig.skills.entries || {};
+      const prev = liveConfig.skills.entries['naboto-query-context'];
+      const next = applyNabotoSkillEntry(prev);
+      const port = nabotoWrapperHttpPort();
+      const needsPush = !prev?.enabled || prev?.env?.NABOTO_WRAPPER_PORT !== port;
+      if (needsPush) {
+        liveConfig.skills.entries['naboto-query-context'] = next;
         writeFileSync(configFile, JSON.stringify(liveConfig, null, 2));
-        console.log(`Re-applied naboto-query-context skill${logSuffix} (file)`);
+        console.log(`Re-applied naboto-query-context (env NABOTO_WRAPPER_PORT=${port})${logSuffix} (file)`);
         try {
           const { gatewayRPC } = await import('./gateway-rpc.js');
           await gatewayRPC('config.set', { raw: JSON.stringify(liveConfig) });

@@ -7,6 +7,12 @@ description: Use when the user asks about recent operational messages (bot_obser
 
 **Obligatorio antes de decir “no tengo acceso”:** si la pregunta es **llegadas hoy**, **reservas con arribo hoy**, **quién llega hoy** o similar → **ejecutá `curl`** al endpoint **arrivals** con `from_day=0` y `to_day=0` (y `limit` razonable) usando `OPENCLAW_GATEWAY_TOKEN`, **luego** interpretá el JSON. No derives a OPERATOR/OPERA sin ese paso.
 
+## Invocación real del shell (no pseudocódigo)
+
+- Tenés que usar la herramienta nativa de **shell del gateway** (en OpenClaw suele llamarse **`exec`**; llamada a herramienta / tool use del asistente), con **un comando shell** (por ejemplo la línea `curl` de abajo). El proceso corre en el mismo contenedor que el wrapper; `$PORT` y `$OPENCLAW_GATEWAY_TOKEN` ya están en el entorno.
+- **Prohibido** poner en el mensaje del asistente: `tool_code`, `print(`, Python, `exec.run_shell`, `run_shell`, ni ningún código que *simule* una herramienta. Eso **no ejecuta nada** y el usuario no ve el JSON.
+- Flujo correcto: (1) tool **`exec`** → comando = `curl -sS -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" "http://127.0.0.1:${PORT}/api/naboto/query/arrivals?from_day=0&to_day=0&limit=50"` (2) leer stdout (3) responder en **español** con el resumen.
+
 **No confundir:** vos sos el agente **NaBoTo** (persona, hotel). Esta skill describe solo cómo responder cuando preguntan por **mensajes operativos ya guardados** en `bot_observations` / vista `v_naboto_observations_recent`. Si el usuario pregunta **quién sos** o **“como NaBoTo”** en sentido personal, respondé según **SOUL.md**, no expliques esta vista como si “NaBoTo fuera una herramienta”.
 
 ## Cuándo usar
@@ -100,7 +106,7 @@ Si `configured:false` o tabla no allowlisted, explicá que falta configuración 
 ## Reglas
 
 1. **Solo lectura.** Postgres y AppSheet: estos endpoints no escriben.
-2. Usá **exec** / shell para `curl` como en **searxng-local**; no pegues el token en grupos de WhatsApp.
+2. Usá la herramienta **`exec`** (invocación real) para `curl`, como en **searxng-local** — nunca pseudocódigo; no pegues el token en grupos de WhatsApp.
 3. **No inventar** filas; si `count` es 0 o `ok:false`, decilo claro.
 4. Aplicar **guardrails** de PII (ver `guardrails_permissions_matrix.md` en el proyecto memoria).
 

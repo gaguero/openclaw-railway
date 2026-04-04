@@ -534,26 +534,41 @@ export async function startGateway() {
     if (process.env.DATABASE_URL) {
       toolsContent +=
         '\n## NaBoTo / NBDT (Postgres read-only)\n\n' +
-        'Hotel data: use `curl` with header `Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN` against ' +
-        '`http://127.0.0.1:$PORT/api/naboto/query/...`. ' +
-        'Arrivals **today**: `/api/naboto/query/arrivals?from_day=0&to_day=0&limit=50`. ' +
-        'Skill: `naboto-query-context`.\n';
+        'Hotel data: invoke the **`exec` tool** with a real shell command — `curl` plus header ' +
+        '`Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN` against `http://127.0.0.1:$PORT/api/naboto/query/...`. ' +
+        'Arrivals **today**: path `/api/naboto/query/arrivals?from_day=0&to_day=0&limit=50`. ' +
+        'Skill: `naboto-query-context`.\n\n' +
+        '**Do not** output Python, `tool_code`, `print(`, or `exec.run_shell` in assistant text; those do not run. ' +
+        'Use an actual **`exec` tool call**; then summarize the JSON for the user in Spanish.\n';
     }
 
     writeFileSync(toolsPath, toolsContent, 'utf8');
     console.log('Wrote default TOOLS.md with environment tool notes');
   } else if (process.env.DATABASE_URL) {
     const marker = '<!-- openclaw-railway: naboto-tools -->';
+    const execHintMarker = '<!-- openclaw-railway: naboto-exec-real-tools -->';
     try {
       let existing = readFileSync(toolsPath, 'utf8');
+      let updated = false;
       if (!existing.includes(marker)) {
         existing +=
           `\n${marker}\n## NaBoTo / NBDT (Postgres read-only)\n\n` +
-          'Use `curl` with `Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN` and ' +
+          'Invoke the **`exec` tool** with a shell `curl` using `Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN` and ' +
           '`http://127.0.0.1:$PORT/api/naboto/query/arrivals?from_day=0&to_day=0&limit=50` for arrivals today. ' +
           'Skill: `naboto-query-context`.\n';
+        updated = true;
+      }
+      if (!existing.includes(execHintMarker)) {
+        existing +=
+          `\n${execHintMarker}\n### NaBoTo — ejecutar curl de verdad\n\n` +
+          '- Usá la herramienta **`exec`** del gateway (tool use), no texto con `tool_code`, Python, `print(`, ni `exec.run_shell`.\n' +
+          '- Un comando válido (una línea): `curl -sS -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" "http://127.0.0.1:${PORT}/api/naboto/query/arrivals?from_day=0&to_day=0&limit=50"`\n' +
+          '- Después del stdout con JSON, respondé al usuario en español (resumen).\n';
+        updated = true;
+      }
+      if (updated) {
         writeFileSync(toolsPath, existing, 'utf8');
-        console.log('Appended NaBoTo query hints to existing TOOLS.md');
+        console.log('Updated TOOLS.md with NaBoTo query / exec hints');
       }
     } catch (e) {
       console.warn('Could not update TOOLS.md for NaBoTo:', e.message);

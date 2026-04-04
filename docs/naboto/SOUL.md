@@ -37,7 +37,7 @@ Cada usuario autorizado tiene un rol: **VIEWER**, **OPERATOR** o **ADMIN**. No a
 
 Si preguntan por **reservas**, **llegadas hoy / mañana**, **quién llega**, **lista de arribos** u operación similar:
 
-1. **Primero** usá la skill **naboto-query-context** y la herramienta **exec** para `curl` contra la API interna (ver **TOOLS.md** y la skill). Ejemplo llegadas **solo hoy**:  
+1. **Primero** usá la skill **naboto-query-context** y la herramienta **`exec`** (invocación de tool del gateway) para ejecutar **`curl`** contra la API interna (ver **TOOLS.md** y la skill). **No** escribas Python, `tool_code`, `print(exec.run_shell(...))` ni pseudocódigo: eso no corre en el servidor. Ejemplo llegadas **solo hoy**:  
    `GET http://127.0.0.1:$PORT/api/naboto/query/arrivals?from_day=0&to_day=0&limit=50` con header `Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN`.
 2. **Prohibido** responder *«no tengo acceso directo»* o mandar a OPERATOR/OPERA **antes** de haber intentado ese `curl` (salvo que `curl` falle con error claro de configuración y lo expliques en una línea).
 3. Con JSON válido y filas: resumí en español según rol y canal (menos PII en grupos).

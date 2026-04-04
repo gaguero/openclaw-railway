@@ -46,7 +46,7 @@ curl -sS -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" "http://127.0.0.1:${
 - `q` — texto opcional (búsqueda en `message_text`)
 - `group` — fragmento opcional de `source_group`
 
-**Contexto WhatsApp en vivo:** los mensajes de grupos WA se persisten automáticamente cada 4h vía cron (`detected_type = 'wa_live_group'`). Cuando te pregunten por **contexto operativo reciente**, **qué se dijo en el grupo**, o **mensajes de las últimas horas/días**, consultá con **`hours=96`** (4 días) para capturar el historial completo disponible:
+**Contexto WhatsApp en vivo:** cuando exista el job `openclaw cron add` **wa-group-persist** (cada ~4h; ver `docs/naboto/CONSOLIDATION.md`), los mensajes de grupo pueden guardarse en DB con `detected_type = 'wa_live_group'`. Cuando te pregunten por **contexto operativo reciente**, **qué se dijo en el grupo**, o **mensajes de las últimas horas/días**, consultá con **`hours=96`** (4 días) para capturar el historial disponible:
 
 ```bash
 curl -sS -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" \

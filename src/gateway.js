@@ -79,7 +79,16 @@ function ensureWhatsAppBaseline(config) {
   let changed = false;
   if (wa.dmPolicy === undefined) { wa.dmPolicy = 'disabled'; changed = true; }
   if (wa.groupPolicy === undefined) { wa.groupPolicy = 'allowlist'; changed = true; }
-  if (!Array.isArray(wa.groups)) { wa.groups = []; changed = true; }
+  // OpenClaw expects `groups` as a record (per-group options), not an array — see docs.openclaw.ai/channels/groups
+  if (Array.isArray(wa.groups)) {
+    wa.groups = {};
+    changed = true;
+    console.log('Migrated channels.whatsapp.groups from invalid array → empty object {}');
+  }
+  if (!wa.groups || typeof wa.groups !== 'object' || Array.isArray(wa.groups)) {
+    wa.groups = {};
+    changed = true;
+  }
   if (!Array.isArray(wa.groupAllowFrom)) { wa.groupAllowFrom = ['*']; changed = true; }
   if (wa.historyLimit === undefined) { wa.historyLimit = 500; changed = true; }
   if (wa.sendReadReceipts === undefined) { wa.sendReadReceipts = false; changed = true; }
@@ -89,33 +98,16 @@ function ensureWhatsAppBaseline(config) {
 }
 
 /**
- * Ensure cron job for persisting WhatsApp group messages to bot_observations.
- * Only added when DATABASE_URL is set and channels.whatsapp.enabled is true.
+ * OpenClaw stores cron jobs in ~/.openclaw/cron/jobs.json (CLI: openclaw cron add), not under cron.jobs in openclaw.json.
+ * Remove stale invalid key so the gateway can start after an older image wrote it.
  */
-function ensureWaGroupPersistCron(config) {
-  if (!process.env.DATABASE_URL) return false;
-  if (!config.channels?.whatsapp?.enabled) return false;
-  config.cron = config.cron || {};
-  if (config.cron.enabled === undefined) config.cron.enabled = true;
-  config.cron.jobs = config.cron.jobs || {};
-  if (config.cron.jobs['wa-group-persist']) return false;
-  const port = nabotoWrapperHttpPort();
-  config.cron.jobs['wa-group-persist'] = {
-    schedule: '0 */4 * * *',
-    sessionTarget: 'isolated',
-    prompt:
-      'Tarea automática de persistencia WA. ' +
-      '1) Usá sessions_list para encontrar sesiones de grupo WhatsApp (session keys que contengan "whatsapp:group"). ' +
-      '2) Para cada sesión, usá sessions_history para leer mensajes recientes (últimas 4 horas). ' +
-      '3) Para cada mensaje de usuario (no tuyo), guardalo con exec curl: ' +
-      `POST http://127.0.0.1:${port}/api/naboto/observations ` +
-      'con header "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" y ' +
-      'header "Content-Type: application/json" y body JSON con campos: ' +
-      'source_group (nombre del grupo), message_author (quien envió), ' +
-      'message_text (texto del mensaje), detected_type "wa_live_group". ' +
-      'No respondas en ningún grupo de WhatsApp. Solo almacena y reporta cuántos mensajes guardaste.',
-  };
-  console.log('Added cron job wa-group-persist (every 4h, WhatsApp group → bot_observations)');
+function sanitizeCronConfig(config) {
+  if (!config.cron || typeof config.cron !== 'object') return false;
+  if (config.cron.jobs === undefined) return false;
+  delete config.cron.jobs;
+  console.log(
+    'Removed invalid cron.jobs from openclaw.json (use `openclaw cron add` for wa-group-persist — see CONSOLIDATION.md)',
+  );
   return true;
 }
 
@@ -704,7 +696,7 @@ export async function startGateway() {
       const guestsQueryMarker = '<!-- openclaw-railway: naboto-guests-query -->';
       if (!existing.includes(guestsQueryMarker)) {
         existing +=
-          `\n${guestsQueryMarker}\n### NaBoTo — buscar huésped (`/api/naboto/query/guests`)\n\n` +
+          `\n${guestsQueryMarker}\n### NaBoTo — buscar huésped (/api/naboto/query/guests)\n\n` +
           '- **Nunca** armes la URL con `http://127.0.0.1:${PORT}/...`: en `exec` suele quedar **literal** y el `curl` falla. Usá `${NABOTO_WRAPPER_PORT:-8080}` o **8080** fijo.\n' +
           '- Por nombre: `q=` o `name=` (equivalente). Poné la URL **entre comillas dobles**; espacios → `%20` (ej. `.../guests?q=Yuwen%20Wu`).\n' +
           '- Por id: `guest_id=`.\n';
@@ -739,8 +731,8 @@ export async function startGateway() {
     }
   }
 
+  sanitizeCronConfig(config);
   ensureWhatsAppBaseline(config);
-  ensureWaGroupPersistCron(config);
 
   if (ensureNabotoAgentIdentity(config)) {
     console.log('Applied NaBoTo agent identity (openclaw.json agents.list)');

@@ -67,7 +67,7 @@ El wrapper inyecta config base de WhatsApp al arrancar (`ensureWhatsAppBaseline`
    ```bash
    openclaw config set channels.whatsapp.enabled true
    ```
-   El wrapper llena los defaults al próximo reinicio: `dmPolicy: "disabled"`, `groupPolicy: "allowlist"`, `groups: []`, `historyLimit: 500`, `sendReadReceipts: false`, `reactionLevel: "off"`.
+   El wrapper llena los defaults al próximo reinicio: `dmPolicy: "disabled"`, `groupPolicy: "allowlist"`, `groups: {}` (**objeto**, no array; vacío = ningún grupo permitido hasta que agregues JIDs), `historyLimit: 500`, `sendReadReceipts: false`, `reactionLevel: "off"`.
 
 3. **QR link** con el teléfono personal:
    ```bash
@@ -75,13 +75,28 @@ El wrapper inyecta config base de WhatsApp al arrancar (`ensureWhatsAppBaseline`
    ```
    Escanear el QR con WhatsApp.
 
-4. **Descubrir grupos** del hotel en los logs del gateway y poblar la allowlist:
-   ```bash
-   railway logs | grep -i group
-   openclaw config set channels.whatsapp.groups '["120363...@g.us"]'
+4. **Allowlist de grupos** — OpenClaw exige `channels.whatsapp.groups` como **registro** (clave = JID del grupo, valor = opciones). Ejemplo en `openclaw.json` (Lite → config o edición del archivo):
+   ```json
+   "groups": {
+     "120363012345678901@g.us": { "requireMention": true }
+   }
    ```
+   Descubrí el JID en logs del gateway o con `openclaw channels status` / documentación del plugin.
 
-5. **Verificar**: el cron `wa-group-persist` (cada 4h) lee mensajes de grupo y los guarda en `bot_observations` (`detected_type: "wa_live_group"`). El bot **no responde** en ningún grupo (instrucciones en `SOUL.md`).
+5. **Persistencia a Postgres (cron)** — los jobs **no** van dentro de `openclaw.json`; OpenClaw los guarda en `~/.openclaw/cron/jobs.json`. Creá el job una vez (el `--message` va entre **comillas simples** para que `$OPENCLAW_GATEWAY_TOKEN` no se expanda en tu shell; el agente sí la usa al ejecutar):
+   ```bash
+   openclaw cron add \
+     --name "wa-group-persist" \
+     --cron "0 */4 * * *" \
+     --session isolated \
+     --no-deliver \
+     --message 'Tarea NaBoTo: persistencia WA. 1) sessions_list → sesiones con whatsapp:group. 2) sessions_history por cada una. 3) Por cada mensaje de usuario, exec curl POST http://127.0.0.1:8080/api/naboto/observations con Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN y Content-Type application/json; JSON: source_group, message_author, message_text, detected_type wa_live_group. No enviar mensajes a WhatsApp. Resumí cuántos insertaste.'
+   ```
+   Si Railway usa otro puerto para el wrapper, cambiá `8080` en el texto del mensaje.
+
+6. **Verificar**: `openclaw cron list`, enviar un mensaje de prueba en el grupo, tras la corrida (o `openclaw cron run <id> --due`) consultar `GET .../api/naboto/query/observations?hours=6`. El bot **no responde** en grupos en Fase 1 (`SOUL.md`).
+
+**Si el gateway falló con config inválida** (`cron.jobs` o `groups` array): redeploy de esta imagen; al arrancar se elimina `cron.jobs` y se corrige `groups` si venía como array. Luego completá el paso 4–5.
 
 ### Fase 2: Bot activo (número NaBoTo oficial)
 
@@ -99,4 +114,4 @@ El wrapper inyecta config base de WhatsApp al arrancar (`ensureWhatsAppBaseline`
 ### Referencia
 
 - [OpenClaw WhatsApp docs](https://docs.openclaw.ai/channels/whatsapp): `dmPolicy`, `allowFrom`, `groupPolicy`, `groupAllowFrom`, `groups`, `historyLimit`.
-- Config gateway: `ensureWhatsAppBaseline()` + `ensureWaGroupPersistCron()` en `src/gateway.js`.
+- Config gateway: `sanitizeCronConfig()` (quita `cron.jobs` obsoleto) + `ensureWhatsAppBaseline()` en `src/gateway.js`.

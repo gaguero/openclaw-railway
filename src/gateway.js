@@ -5,11 +5,23 @@
  */
 
 import { spawn } from 'child_process';
-import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync, readdirSync, renameSync, symlinkSync, lstatSync, rmSync } from 'fs';
+import {
+  existsSync,
+  readFileSync,
+  writeFileSync,
+  copyFileSync,
+  mkdirSync,
+  unlinkSync,
+  readdirSync,
+  renameSync,
+  symlinkSync,
+  lstatSync,
+  rmSync
+} from 'fs';
 import { join } from 'path';
 import crypto from 'crypto';
 import { setGatewayReady } from './health.js';
-import { migrateConfig, getDefaultConfig } from './schema/index.js';
+import { migrateConfig, getDefaultConfig, ensureNabotoAgentIdentity } from './schema/index.js';
 
 let gatewayProcess = null;
 let isShuttingDown = false;
@@ -246,15 +258,20 @@ export async function startGateway() {
   config.agents.defaults = config.agents.defaults || {};
   delete config.agents.defaults.persona;
 
-  // Write a default SOUL.md (identity/persona only) if one doesn't already exist.
-  // Tool awareness belongs in TOOLS.md, which is injected for all agents + sub-agents.
+  // SOUL.md: prefer NaBoTo template from image; else generic OpenClaw default.
   const soulPath = join(workspaceDir, 'SOUL.md');
+  const nabotoSoulTemplate = '/app/docs/naboto/SOUL.md';
   if (!existsSync(soulPath)) {
-    writeFileSync(soulPath,
-      '# Soul\n\n' +
-      'You are a helpful, knowledgeable AI assistant running inside an OpenClaw gateway on Railway.\n',
-      'utf8');
-    console.log('Wrote default SOUL.md');
+    if (existsSync(nabotoSoulTemplate)) {
+      copyFileSync(nabotoSoulTemplate, soulPath);
+      console.log('Wrote SOUL.md from NaBoTo template');
+    } else {
+      writeFileSync(soulPath,
+        '# Soul\n\n' +
+        'You are a helpful, knowledgeable AI assistant running inside an OpenClaw gateway on Railway.\n',
+        'utf8');
+      console.log('Wrote default SOUL.md');
+    }
   }
 
   // Inject gateway settings (always overwritten by wrapper)
@@ -505,6 +522,10 @@ export async function startGateway() {
         }
       }
     }
+  }
+
+  if (ensureNabotoAgentIdentity(config)) {
+    console.log('Applied NaBoTo agent identity (openclaw.json agents.list)');
   }
 
   writeFileSync(configFile, JSON.stringify(config, null, 2));

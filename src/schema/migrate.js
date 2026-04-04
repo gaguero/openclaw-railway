@@ -150,6 +150,64 @@ export function migrateConfig(config) {
   return { migrated: changes.length > 0, changes };
 }
 
+/** Names treated as generic upstream defaults → replace with NaBoTo in this Railway template */
+const NABOTO_REPLACE_IDENTITY_NAMES = new Set([
+  '',
+  'OpenClaw',
+  'openclaw',
+  'Assistant',
+  'Claw',
+]);
+
+const NABOTO_AGENT_IDENTITY = {
+  name: 'NaBoTo',
+  theme: 'asistente operativo Guest Experience, Nayara Bocas del Toro, hotel NBDT',
+  emoji: '🏨',
+};
+
+/**
+ * Ensure the default agent presents as NaBoTo (identity in openclaw.json → chat UI + model context).
+ * Does not overwrite a custom agent name (anything not in {@link NABOTO_REPLACE_IDENTITY_NAMES}).
+ *
+ * @param {Object} config - Full openclaw config (mutated in place)
+ * @returns {boolean} True if config was changed
+ */
+export function ensureNabotoAgentIdentity(config) {
+  if (!config || typeof config !== 'object') {
+    return false;
+  }
+  config.agents = config.agents || {};
+  const list = config.agents.list;
+
+  if (!Array.isArray(list) || list.length === 0) {
+    config.agents.list = [
+      {
+        id: 'main',
+        default: true,
+        identity: { ...NABOTO_AGENT_IDENTITY },
+      },
+    ];
+    return true;
+  }
+
+  const defaultIdx = list.findIndex(a => a && a.default === true);
+  const mainIdx = list.findIndex(a => a && a.id === 'main');
+  const idx = defaultIdx >= 0 ? defaultIdx : (mainIdx >= 0 ? mainIdx : 0);
+  const agent = list[idx];
+  if (!agent || typeof agent !== 'object') {
+    return false;
+  }
+
+  agent.identity = agent.identity || {};
+  const name = String(agent.identity.name ?? '').trim();
+  if (!name || NABOTO_REPLACE_IDENTITY_NAMES.has(name)) {
+    Object.assign(agent.identity, NABOTO_AGENT_IDENTITY);
+    return true;
+  }
+
+  return false;
+}
+
 /**
  * Get the default minimal config for a new installation
  * @param {number} port - Gateway port
@@ -161,8 +219,15 @@ export function getDefaultConfig(port) {
       defaults: {
         model: {
           primary: 'anthropic/claude-sonnet-4'
-        }
-      }
+        },
+      },
+      list: [
+        {
+          id: 'main',
+          default: true,
+          identity: { ...NABOTO_AGENT_IDENTITY },
+        },
+      ],
     },
     memory: {
       backend: 'builtin'

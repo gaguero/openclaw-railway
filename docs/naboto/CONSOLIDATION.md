@@ -2,7 +2,7 @@
 
 ## Qué queda después de consolidar
 
-- **Identidad** en config: nombre *NaBoTo*, emoji 🏨.
+- **Identidad** en config: nombre *NaBoTo*, emoji 🏨 — el **wrapper** aplica `ensureNabotoAgentIdentity` en cada arranque del gateway: si el agente por defecto no tiene nombre o tiene un nombre genérico (`OpenClaw`, `Assistant`, etc.), se escribe NaBoTo en `openclaw.json`. Un nombre **personalizado** no se pisa.
 - **Personalidad y reglas** en `SOUL.md` del workspace (inyectado al contexto del agente).
 - **Skill** `naboto-query-context` disponible desde `/bundled-skills` (vía `skills.load.extraDirs`).
 - **Chat web** en `/openclaw` habla con el mismo agente; **WhatsApp** es opcional y se añade después con `channels.whatsapp`.

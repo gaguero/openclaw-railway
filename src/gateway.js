@@ -100,14 +100,68 @@ function ensureWhatsAppBaseline(config) {
 /** Default test group JID (NBDT) when emergency allowlist is on without explicit JID. */
 const NABOTO_WA_DEFAULT_TEST_GROUP_JID = '120363410193914647@g.us';
 
+function nabotoOpenclawStateDir() {
+  return process.env.OPENCLAW_STATE_DIR || '/data/.openclaw';
+}
+
+/** Snapshot current whatsapp.groups before reply-lock merge (recovery from volume). */
+function backupWhatsAppGroupsForReplyLock(wa) {
+  try {
+    if (!wa?.groups || typeof wa.groups !== 'object' || Array.isArray(wa.groups)) return;
+    const dir = nabotoOpenclawStateDir();
+    mkdirSync(dir, { recursive: true });
+    const p = join(dir, 'naboto-wa-groups-backup-before-reply-lock.json');
+    writeFileSync(
+      p,
+      JSON.stringify({ savedAt: new Date().toISOString(), groups: wa.groups }, null, 2),
+      'utf8',
+    );
+  } catch (e) {
+    console.warn('[NaBoTo] WA groups backup failed:', e.message);
+  }
+}
+
 /**
- * Restrict WhatsApp so only specific group JIDs can trigger bot replies (allowlist).
- * Other groups are dropped by OpenClaw even if the bot is @mentioned.
+ * JIDs we remember across restarts so merge mode can re-add `allow:false` rows after the UI only shows one group.
+ * File: `naboto-wa-reply-lock-registry.json` in state dir (`jids` array).
+ */
+function loadWaReplyLockRegistryJids() {
+  try {
+    const p = join(nabotoOpenclawStateDir(), 'naboto-wa-reply-lock-registry.json');
+    if (!existsSync(p)) return [];
+    const j = JSON.parse(readFileSync(p, 'utf8'));
+    if (!Array.isArray(j.jids)) return [];
+    return j.jids.map((x) => String(x).trim()).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+function saveWaReplyLockRegistryJids(jids) {
+  try {
+    const dir = nabotoOpenclawStateDir();
+    mkdirSync(dir, { recursive: true });
+    const p = join(dir, 'naboto-wa-reply-lock-registry.json');
+    const unique = [...new Set(jids.map((x) => String(x).trim()).filter(Boolean))].sort();
+    writeFileSync(
+      p,
+      JSON.stringify({ updatedAt: new Date().toISOString(), jids: unique }, null, 2),
+      'utf8',
+    );
+  } catch (e) {
+    console.warn('[NaBoTo] WA reply-lock registry save failed:', e.message);
+  }
+}
+
+/**
+ * Restrict WhatsApp group replies to specific JIDs.
  *
- * - Set `NABOTO_WA_REPLY_GROUPS_ONLY` to a comma-separated list of `...@g.us` JIDs (highest priority).
- * - Or set `NABOTO_WA_EMERGENCY_TEST_GROUP_ONLY=1` (or `true`) to allow only
- *   `NABOTO_WA_TEST_GROUP_JID` or the default test group above.
- * - Set `NABOTO_WA_REPLY_GROUPS_ONLY=0` / `off` / empty with emergency unset to skip (keep existing config).
+ * - `NABOTO_WA_REPLY_GROUPS_ONLY`: comma-separated `...@g.us` (or `0` / `off` to disable this merge).
+ * - `NABOTO_WA_EMERGENCY_TEST_GROUP_ONLY=1`: same as listing `NABOTO_WA_TEST_GROUP_JID` or the default test JID.
+ * - `NABOTO_WA_REPLY_GROUPS_MODE`:
+ *   - `merge` (default): keep every existing `groups` entry + registry JIDs; set `allow: true` only for listed
+ *     reply JIDs, `allow: false` for the rest (stays visible in Control UI; OpenClaw should skip non-allowed).
+ *   - `replace`: **destructive** — `groups` only contains reply JIDs (old behavior).
  *
  * @param {object} config
  * @returns {boolean}
@@ -134,26 +188,77 @@ function applyNabotoWaReplyGroupsOnlyAllowlist(config) {
 
   if (!raw) return false;
 
-  const jids = raw
+  const replyJids = raw
     .split(/[,;\s]+/)
     .map((s) => s.trim())
     .filter(Boolean)
     .filter((s) => s !== '0' && s !== 'false' && s !== 'off');
-  if (jids.length === 0) return false;
+  if (replyJids.length === 0) return false;
 
   config.channels = config.channels || {};
   const wa = config.channels.whatsapp;
   if (!wa || typeof wa !== 'object' || !wa.enabled) return false;
 
-  const groups = {};
-  for (const jid of jids) {
-    groups[jid] = { requireMention: true };
+  backupWhatsAppGroupsForReplyLock(wa);
+
+  const mode = String(process.env.NABOTO_WA_REPLY_GROUPS_MODE || 'merge')
+    .trim()
+    .toLowerCase();
+  const replace = mode === 'replace' || mode === 'overwrite';
+
+  const replySet = new Set(replyJids);
+  const prev =
+    wa.groups && typeof wa.groups === 'object' && !Array.isArray(wa.groups) ? { ...wa.groups } : {};
+
+  if (replace) {
+    const groups = {};
+    for (const jid of replyJids) {
+      groups[jid] = { requireMention: true, allow: true };
+    }
+    wa.groups = groups;
+    saveWaReplyLockRegistryJids([...Object.keys(prev).filter((k) => k !== '*'), ...replyJids]);
+    wa.groupPolicy = 'allowlist';
+    console.log(
+      '[NaBoTo] WA reply-lock REPLACE: groups object only contains reply JIDs:',
+      replyJids.join(', '),
+    );
+    return true;
   }
+
+  /** @type {Set<string>} */
+  const union = new Set(replyJids);
+  for (const k of Object.keys(prev)) {
+    if (k !== '*') union.add(k);
+  }
+  for (const k of loadWaReplyLockRegistryJids()) {
+    union.add(k);
+  }
+
+  if (prev['*']) {
+    console.log(
+      '[NaBoTo] WA reply-lock merge: dropping groups."*" (wildcard incompatible with per-group allow); add explicit JIDs in Control UI as needed.',
+    );
+  }
+
+  const groups = {};
+  for (const jid of union) {
+    const existing = prev[jid];
+    const base =
+      existing && typeof existing === 'object' && !Array.isArray(existing) ? { ...existing } : {};
+    if (replySet.has(jid)) {
+      groups[jid] = { ...base, allow: true, requireMention: true };
+    } else {
+      groups[jid] = { ...base, allow: false, requireMention: true };
+    }
+  }
+
   wa.groups = groups;
   wa.groupPolicy = 'allowlist';
+  saveWaReplyLockRegistryJids([...union]);
   console.log(
-    '[NaBoTo] WhatsApp group reply allowlist active — bot may respond only in:',
-    jids.join(', '),
+    '[NaBoTo] WA reply-lock MERGE: reply allowed in',
+    replyJids.join(', '),
+    `— ${Object.keys(groups).length} group row(s) in config (others allow:false).`,
   );
   return true;
 }

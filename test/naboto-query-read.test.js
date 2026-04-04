@@ -67,7 +67,16 @@ describe('naboto-query-read', () => {
     const res = mockRes();
     await nabotoQueryGuestsHandler(req, res);
     assert.strictEqual(res.statusCode, 400);
-    assert.match(res.body?.error || '', /guest_id|q/i);
+    assert.match(res.body?.error || '', /guest_id|q|name/i);
+  });
+
+  it('guests accepts name= as alias of q for validation', async () => {
+    process.env.DATABASE_URL = 'postgres://u:p@127.0.0.1:65432/naboto_query_test';
+    const req = { query: { name: 'x' } };
+    const res = mockRes();
+    await nabotoQueryGuestsHandler(req, res);
+    assert.strictEqual(res.statusCode, 400);
+    assert.match(res.body?.error || '', /name/i);
   });
 
   it('tours returns 400 when to_day < from_day (before DB query)', async () => {

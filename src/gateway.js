@@ -612,6 +612,15 @@ export async function startGateway() {
           'La variable la define esta imagen en `skills.entries`; `$PORT` puede faltar dentro de `exec`.\n';
         updated = true;
       }
+      const guestsQueryMarker = '<!-- openclaw-railway: naboto-guests-query -->';
+      if (!existing.includes(guestsQueryMarker)) {
+        existing +=
+          `\n${guestsQueryMarker}\n### NaBoTo — buscar huésped (`/api/naboto/query/guests`)\n\n` +
+          '- **Nunca** armes la URL con `http://127.0.0.1:${PORT}/...`: en `exec` suele quedar **literal** y el `curl` falla. Usá `${NABOTO_WRAPPER_PORT:-8080}` o **8080** fijo.\n' +
+          '- Por nombre: `q=` o `name=` (equivalente). Poné la URL **entre comillas dobles**; espacios → `%20` (ej. `.../guests?q=Yuwen%20Wu`).\n' +
+          '- Por id: `guest_id=`.\n';
+        updated = true;
+      }
       if (updated) {
         writeFileSync(toolsPath, existing, 'utf8');
         console.log('Updated TOOLS.md with NaBoTo query / exec hints');

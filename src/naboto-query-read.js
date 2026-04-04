@@ -661,7 +661,8 @@ export async function nabotoQueryGuestsHandler(req, res) {
     return res.status(503).json({ ok: false, error: 'DATABASE_URL not configured' });
   }
   const gidRaw = req.query.guest_id;
-  const qFrag = req.query.q ? ilikeFragment(req.query.q) : '';
+  const rawSearch = req.query.q ?? req.query.name;
+  const qFrag = rawSearch != null && rawSearch !== '' ? ilikeFragment(String(rawSearch)) : '';
   const limit = clampInt(req.query.limit, 15, 1, 40);
 
   if (gidRaw !== undefined && gidRaw !== '') {
@@ -701,7 +702,9 @@ export async function nabotoQueryGuestsHandler(req, res) {
   if (qFrag.length < 2) {
     return res.status(400).json({
       ok: false,
-      error: 'Provide guest_id or q (min 2 characters after sanitizing wildcards)',
+      error:
+        'Provide guest_id, or q / name (min 2 characters after sanitizing wildcards). ' +
+        'Tip: put the curl URL in double quotes and encode spaces as %20 (e.g. q=Yuwen%20Wu).',
     });
   }
 
@@ -729,10 +732,17 @@ export async function nabotoQueryGuestsHandler(req, res) {
   const params = prop ? [like, limit, prop.param] : [like, limit];
   try {
     const r = await p.query(sql, params);
+    const searchParam =
+      req.query.q != null && String(req.query.q) !== '' ? 'q' : 'name';
     return res.json({
       ok: true,
       domain: 'guests',
-      filters_applied: { q: qFrag, property_id: prop ? prop.param : null, limit },
+      filters_applied: {
+        search: qFrag,
+        search_param: searchParam,
+        property_id: prop ? prop.param : null,
+        limit,
+      },
       count: r.rows.length,
       rows: r.rows,
     });
@@ -823,11 +833,17 @@ export async function nabotoQueryIndexHandler(_req, res) {
       {
         path: 'guests',
         method: 'GET',
-        params: { guest_id: 'exact id', q: 'min 2 chars name search', limit: '1-40 default 15', property_id: 'optional' },
+        params: {
+          guest_id: 'exact id',
+          q: 'min 2 chars name search',
+          name: 'alias of q (same ILIKE search)',
+          limit: '1-40 default 15',
+          property_id: 'optional',
+        },
       },
     ],
     appsheet: {
-      base: 'http://127.0.0.1:${PORT}/api/naboto/appsheet',
+      base: 'Same host as query API — /api/naboto/appsheet',
       note: 'Requires APPSHEET_APP_ID, APPSHEET_ACCESS_KEY, APPSHEET_READONLY_TABLES',
       endpoints: [
         { path: '', method: 'GET', desc: 'status + allowlisted table names' },

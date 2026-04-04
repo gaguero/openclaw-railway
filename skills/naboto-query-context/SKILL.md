@@ -108,11 +108,16 @@ Misma idea de **`from_day` / `to_day` / `limit`** (defaults -1 … 14, limit def
 
 ### Perfiles de huéspedes (`guests`)
 
-**Obligatorio** uno de: **`guest_id=`** (exacto) o **`q=`** (mín. 2 caracteres, búsqueda en nombre). **`limit`** 1–40 (default 15). Tratá email/tel/notas como PII (resumí en canales públicos).
+**Obligatorio** uno de: **`guest_id=`** (exacto) o **`q=`** / **`name=`** (equivalente; búsqueda ILIKE en nombre, mín. 2 caracteres tras sanitizar). **`limit`** 1–40 (default 15). Tratá email/tel/notas como PII (resumí en canales públicos).
+
+**Importante:** URL del `curl` **siempre entre comillas dobles**. Espacios en el nombre → **`%20`**. **No** uses `${PORT}` en la URL (suele quedar literal en `exec` y falla); usá **`${NABOTO_WRAPPER_PORT:-8080}`**.
 
 ```bash
 curl -sS -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" \
   "http://127.0.0.1:${NABOTO_WRAPPER_PORT:-8080}/api/naboto/query/guests?guest_id=123"
+
+curl -sS -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" \
+  "http://127.0.0.1:${NABOTO_WRAPPER_PORT:-8080}/api/naboto/query/guests?q=Yuwen%20Wu"
 ```
 
 Si la respuesta trae `ok:false`, no inventes datos: comunicá el error o pedí verificación a OPERATOR/ADMIN.

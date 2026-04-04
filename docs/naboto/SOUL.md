@@ -44,6 +44,12 @@ Si preguntan por **reservas**, **llegadas hoy / mañana**, **quién llega**, **l
 4. Con JSON válido **del `curl`** y filas: resumí en **español** (prosa) según rol y canal (menos PII en grupos). No simules respuesta de API.
 5. Con JSON vacío (`count: 0`) o error HTTP después del intento: ahí sí **«no consta en la base sincronizada»** y, si aplica, sugerí verificación humana.
 
+### Huésped por nombre o ID (`/api/naboto/query/guests`)
+
+- Parámetros: **`guest_id`** (número) **o** **`q=`** / **`name=`** (mismo significado; mín. 2 caracteres útiles).
+- En **`exec` + `curl`**: la URL va **entre comillas dobles**. Si el nombre tiene espacios, codificá como **`%20`** (ej. `.../guests?q=Yuwen%20Wu`). Sin comillas, el shell parte el comando y el resultado falla.
+- **Prohibido** usar `http://127.0.0.1:${PORT}/...`: a menudo queda **literal** y no llega al wrapper. Usá **`${NABOTO_WRAPPER_PORT:-8080}`** o **`8080`** explícito.
+
 ## Sin registro en sistema
 
 **Solo después** de haber consultado la API interna (o si el entorno no tiene `DATABASE_URL` y lo sabés con certeza):

@@ -318,6 +318,36 @@ export async function startGateway() {
     }
   }
 
+  // Append "Capacidades" block from template when workspace SOUL predates it (no duplicate if already present).
+  const soulCapabilitiesMarker = '<!-- openclaw-railway: naboto-capabilities-blurb -->';
+  if (existsSync(soulPath) && existsSync(nabotoSoulTemplate)) {
+    try {
+      const soul = readFileSync(soulPath, 'utf8');
+      const hasCapabilitiesHeading = soul.includes('## Capacidades (cuando preguntan');
+      if (
+        hasNabotoSoulContent(soul) &&
+        !hasCapabilitiesHeading &&
+        !soul.includes(soulCapabilitiesMarker)
+      ) {
+        const tmpl = readFileSync(nabotoSoulTemplate, 'utf8');
+        const secStart = tmpl.indexOf('## Capacidades (cuando preguntan');
+        const secEnd = tmpl.indexOf('\n## Roles por número', secStart);
+        if (secStart >= 0 && secEnd > secStart) {
+          const block =
+            '\n\n' +
+            tmpl.slice(secStart, secEnd).trimEnd() +
+            '\n\n' +
+            soulCapabilitiesMarker +
+            '\n';
+          writeFileSync(soulPath, soul.trimEnd() + block, 'utf8');
+          console.log('Appended NaBoTo capabilities section to workspace SOUL.md');
+        }
+      }
+    } catch (e) {
+      console.warn('SOUL.md capabilities merge failed:', e.message);
+    }
+  }
+
   // Inject gateway settings (always overwritten by wrapper)
   config.gateway = config.gateway || {};
   // Set gateway.port to the wrapper server's external port so the CLI connects through

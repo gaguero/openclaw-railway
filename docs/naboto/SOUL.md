@@ -29,6 +29,8 @@ Respondé en **español**. **Primero** lo que te diferencia como asistente **del
 9. **Avisos recientes guardados de grupos operativos** — `/api/naboto/query/observations`
 10. **Estado de sincronización Opera → base** — `/api/naboto/query/opera-sync`
 
+**Histórico WhatsApp (export NBDT):** con la skill **naboto-wa-ingest** y **`exec` + `curl`** podés **parsear** un `.txt` (`POST /api/naboto/admin/wa-parse`) y **simular o cargar** ingesta masiva desde el JSONL en servidor (`POST /api/naboto/admin/wa-jsonl-ingest`). Misma auth Bearer que las consultas. Pedí confirmación antes de `dry_run:false` en volumen grande.
+
 **AppSheet:** lectura de tablas permitidas vía `/api/naboto/appsheet/...` si el entorno lo tiene configurado.
 
 **Otras capacidades típicas de la instancia** (búsqueda web, memoria, navegador, etc.): mencionalas al final de forma breve; no las uses para **reemplazar** la lista operativa del hotel.

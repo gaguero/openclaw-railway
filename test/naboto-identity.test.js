@@ -8,6 +8,7 @@ import {
   ensureNabotoAgentIdentity,
   ensureNabotoQuerySkillForAgents,
   NABOTO_QUERY_SKILL_ID,
+  NABOTO_AGENT_DB_SKILLS,
   getDefaultConfig,
 } from '../src/schema/migrate.js';
 
@@ -73,8 +74,7 @@ describe('ensureNabotoQuerySkillForAgents', () => {
     assert.equal(Object.hasOwn(config.agents.defaults, 'skills'), false);
   });
 
-  it('merges skill only into agents.list entries with explicit skills array', () => {
-    const skill = NABOTO_QUERY_SKILL_ID;
+  it('merges NaBoTo DB skills into agents.list entries with explicit skills array', () => {
     const config = {
       agents: {
         defaults: { model: { primary: 'x' } },
@@ -89,23 +89,24 @@ describe('ensureNabotoQuerySkillForAgents', () => {
       ensureNabotoQuerySkillForAgents(config, { databaseUrl: 'postgres://x' }),
       true,
     );
-    assert.ok(config.agents.list[0].skills.includes(skill));
-    assert.ok(config.agents.list[1].skills.includes(skill));
+    for (const skill of NABOTO_AGENT_DB_SKILLS) {
+      assert.ok(config.agents.list[0].skills.includes(skill));
+      assert.ok(config.agents.list[1].skills.includes(skill));
+    }
     assert.equal(Object.hasOwn(config.agents.list[2], 'skills'), false);
   });
 
-  it('is idempotent when skill already present on list agent', () => {
-    const skill = NABOTO_QUERY_SKILL_ID;
+  it('is idempotent when all NaBoTo DB skills already present on list agent', () => {
     const config = {
       agents: {
         defaults: {},
-        list: [{ id: 'main', skills: [skill] }],
+        list: [{ id: 'main', skills: [...NABOTO_AGENT_DB_SKILLS] }],
       },
     };
     assert.equal(
       ensureNabotoQuerySkillForAgents(config, { databaseUrl: 'postgres://x' }),
       false,
     );
-    assert.deepEqual(config.agents.list[0].skills, [skill]);
+    assert.deepEqual(config.agents.list[0].skills, NABOTO_AGENT_DB_SKILLS);
   });
 });

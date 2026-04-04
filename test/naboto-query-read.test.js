@@ -38,6 +38,7 @@ describe('naboto-query-read', () => {
     await nabotoQueryIndexHandler({}, res);
     assert.strictEqual(res.statusCode, 200);
     assert.strictEqual(res.body?.ok, true);
+    assert.ok(res.body?.admin_wa?.endpoints?.length >= 1);
     const paths = (res.body?.endpoints || []).map((e) => e.path);
     for (const p of [
       'arrivals',

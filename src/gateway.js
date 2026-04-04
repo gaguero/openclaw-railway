@@ -47,7 +47,7 @@ function nabotoWrapperHttpPort() {
 }
 
 /**
- * Merge `skills.entries['naboto-query-context']` with `env.NABOTO_WRAPPER_PORT` so agent `exec` has a port even when `PORT` is stripped in sandbox.
+ * Merge NaBoTo `skills.entries.*` (query + WA ingest) with `env.NABOTO_WRAPPER_PORT` so agent `exec` has a port even when `PORT` is stripped in sandbox.
  * @param {object} [prev]
  */
 function applyNabotoSkillEntry(prev) {
@@ -62,6 +62,9 @@ function applyNabotoSkillEntry(prev) {
     },
   };
 }
+
+/** Skills that need NABOTO_WRAPPER_PORT for exec + curl to the wrapper HTTP API */
+const NABOTO_DB_SKILLS = ['naboto-query-context', 'naboto-wa-ingest'];
 
 /**
  * Buffer a log line from the gateway process
@@ -422,17 +425,20 @@ export async function startGateway() {
     }
   }
 
-  // NaBoTo: Postgres query skill (tool name must match folder + SKILL frontmatter: naboto-query-context)
+  // NaBoTo: Postgres query + WA ingest skills (folder name = SKILL frontmatter `name`)
   if (process.env.DATABASE_URL) {
     config.skills = config.skills || {};
     config.skills.entries = config.skills.entries || {};
-    const prevNaboto = config.skills.entries['naboto-query-context'];
-    config.skills.entries['naboto-query-context'] = applyNabotoSkillEntry(prevNaboto);
-    if (!prevNaboto) {
-      console.log('Auto-enabled naboto-query-context skill (DATABASE_URL is set)');
-    }
-    if (!prevNaboto?.env?.NABOTO_WRAPPER_PORT || prevNaboto.env.NABOTO_WRAPPER_PORT !== nabotoWrapperHttpPort()) {
-      console.log(`naboto-query-context: NABOTO_WRAPPER_PORT=${nabotoWrapperHttpPort()} (for curl in agent exec)`);
+    const port = nabotoWrapperHttpPort();
+    for (const skillId of NABOTO_DB_SKILLS) {
+      const prev = config.skills.entries[skillId];
+      config.skills.entries[skillId] = applyNabotoSkillEntry(prev);
+      if (!prev) {
+        console.log(`Auto-enabled ${skillId} skill (DATABASE_URL is set)`);
+      }
+      if (!prev?.env?.NABOTO_WRAPPER_PORT || prev.env.NABOTO_WRAPPER_PORT !== port) {
+        console.log(`${skillId}: NABOTO_WRAPPER_PORT=${port} (for curl in agent exec)`);
+      }
     }
   }
 
@@ -686,7 +692,7 @@ export async function startGateway() {
 
   if (ensureNabotoQuerySkillForAgents(config)) {
     console.log(
-      'Applied naboto-query-context merge (DATABASE_URL): removed invalid agents.defaults.skills if present; merged into agents.list[].skills where explicitly set',
+      'Applied NaBoTo DB skills merge (DATABASE_URL): removed invalid agents.defaults.skills if present; merged into agents.list[].skills where explicitly set',
     );
   }
 
@@ -1049,24 +1055,28 @@ async function runPostStartupTasks(configFile, context = '') {
       const liveConfig = JSON.parse(readFileSync(configFile, 'utf-8'));
       liveConfig.skills = liveConfig.skills || {};
       liveConfig.skills.entries = liveConfig.skills.entries || {};
-      const prev = liveConfig.skills.entries['naboto-query-context'];
-      const next = applyNabotoSkillEntry(prev);
       const port = nabotoWrapperHttpPort();
-      const needsPush = !prev?.enabled || prev?.env?.NABOTO_WRAPPER_PORT !== port;
+      let needsPush = false;
+      for (const skillId of NABOTO_DB_SKILLS) {
+        const prev = liveConfig.skills.entries[skillId];
+        if (!prev?.enabled || prev?.env?.NABOTO_WRAPPER_PORT !== port) {
+          needsPush = true;
+        }
+        liveConfig.skills.entries[skillId] = applyNabotoSkillEntry(prev);
+      }
       if (needsPush) {
-        liveConfig.skills.entries['naboto-query-context'] = next;
         writeFileSync(configFile, JSON.stringify(liveConfig, null, 2));
-        console.log(`Re-applied naboto-query-context (env NABOTO_WRAPPER_PORT=${port})${logSuffix} (file)`);
+        console.log(`Re-applied NaBoTo DB skills (NABOTO_WRAPPER_PORT=${port})${logSuffix} (file)`);
         try {
           const { gatewayRPC } = await import('./gateway-rpc.js');
           await gatewayRPC('config.set', { raw: JSON.stringify(liveConfig) });
-          console.log(`Pushed naboto-query-context config to gateway via RPC${logSuffix}`);
+          console.log(`Pushed NaBoTo DB skills config to gateway via RPC${logSuffix}`);
         } catch (rpcErr) {
-          console.warn(`config.set RPC for naboto-query-context failed${logSuffix}: ${rpcErr.message}`);
+          console.warn(`config.set RPC for NaBoTo DB skills failed${logSuffix}: ${rpcErr.message}`);
         }
       }
     } catch (e) {
-      console.warn(`Failed to check/re-apply naboto-query-context${logSuffix}: ${e.message}`);
+      console.warn(`Failed to check/re-apply NaBoTo DB skills${logSuffix}: ${e.message}`);
     }
   }
 

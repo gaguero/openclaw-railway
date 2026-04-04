@@ -168,6 +168,9 @@ const NABOTO_AGENT_IDENTITY = {
 /** Skill id = folder name + SKILL frontmatter `name` (must match). */
 export const NABOTO_QUERY_SKILL_ID = 'naboto-query-context';
 
+/** Merged into agents with explicit `skills` when DATABASE_URL is set (gateway enables these). */
+export const NABOTO_AGENT_DB_SKILLS = ['naboto-query-context', 'naboto-wa-ingest'];
+
 /** OpenRouter meta-model; often yields Provider finish_reason: error in production. */
 export const OPENROUTER_AUTO_PRIMARY = 'openrouter/openrouter/auto';
 
@@ -230,10 +233,10 @@ export function replaceOpenRouterAutoPrimary(config) {
  * Ensure Postgres read skill for agents when DATABASE_URL is set.
  *
  * OpenClaw builds shipped with this image reject `agents.defaults.skills` (config invalid).
- * Global enable stays in `skills.entries['naboto-query-context']` (gateway.js).
+ * Global enable stays in `skills.entries` for NaBoTo DB skills (gateway.js).
  *
  * For each `agents.list[]` entry that **explicitly** sets `skills` (including `[]`),
- * merge in `naboto-query-context`. Agents without a `skills` key inherit all enabled
+ * merge in `naboto-query-context` and `naboto-wa-ingest`. Agents without a `skills` key inherit all enabled
  * global skills — do not add a `skills` array (that would replace the default allowlist).
  *
  * Removes legacy `agents.defaults.skills` if present (fixes broken deploys).
@@ -252,7 +255,6 @@ export function ensureNabotoQuerySkillForAgents(config, opts = {}) {
   }
 
   let changed = false;
-  const skill = NABOTO_QUERY_SKILL_ID;
 
   config.agents.defaults = config.agents.defaults || {};
   if (Object.hasOwn(config.agents.defaults, 'skills')) {
@@ -267,8 +269,16 @@ export function ensureNabotoQuerySkillForAgents(config, opts = {}) {
       if (!Object.hasOwn(agent, 'skills')) continue;
       const s = agent.skills;
       if (!Array.isArray(s)) continue;
-      if (!s.includes(skill)) {
-        agent.skills = [...s, skill];
+      const next = [...s];
+      let skillsChanged = false;
+      for (const skill of NABOTO_AGENT_DB_SKILLS) {
+        if (!next.includes(skill)) {
+          next.push(skill);
+          skillsChanged = true;
+        }
+      }
+      if (skillsChanged) {
+        agent.skills = next;
         changed = true;
       }
     }

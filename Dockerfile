@@ -128,6 +128,10 @@ COPY docs/naboto/ /app/docs/naboto/
 # Copy pre-bundled skills (Railway-optimized)
 COPY skills/ /bundled-skills/
 
+# WA export parser + fixtures (admin API: /api/naboto/admin/wa-parse, wa-jsonl-ingest)
+COPY scripts/wa-groups-parse-lib.mjs /app/scripts/wa-groups-parse-lib.mjs
+COPY scripts/fixtures/ /app/scripts/fixtures/
+
 # Create data directory with proper permissions
 RUN mkdir -p /data/.openclaw /data/workspace && \
     chmod 700 /data/.openclaw /data/workspace && \

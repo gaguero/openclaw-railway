@@ -850,5 +850,26 @@ export async function nabotoQueryIndexHandler(_req, res) {
         { path: 'find/:tableName', method: 'GET', params: { limit: '1-100 default 25' } },
       ],
     },
+    admin_wa: {
+      base: 'Same Bearer as query API — OPENCLAW_GATEWAY_TOKEN',
+      note: 'Chat agent: tool exec + curl. Ingest from JSONL baked in image; parse accepts raw export text (size limit ~2MB).',
+      endpoints: [
+        {
+          path: '/api/naboto/admin/wa-jsonl-ingest',
+          method: 'POST',
+          body: {
+            source: 'preview (see server WA_JSONL_SOURCES)',
+            dry_run: 'true to count only',
+            limit: 'max rows to insert or simulate (default 5000 cap)',
+          },
+        },
+        {
+          path: '/api/naboto/admin/wa-parse',
+          method: 'POST',
+          body: { text: 'full WA GROUPS .txt export' },
+          returns: 'sections count, records count, sample rows (no DB write)',
+        },
+      ],
+    },
   });
 }

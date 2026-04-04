@@ -54,6 +54,7 @@ import {
   nabotoAppsheetIndexHandler,
   nabotoAppsheetFindHandler,
 } from './naboto-appsheet-read.js';
+import { nabotoWaJsonlIngestHandler, nabotoWaParseHandler } from './naboto-wa-ingest-admin.js';
 
 // Configuration
 const PORT = process.env.PORT || 8080;
@@ -377,8 +378,15 @@ async function installClawHubSkill(slug, skillsDir) {
 // Create Express app
 const app = express();
 
-// Parse JSON and URL-encoded bodies
-app.use(express.json({ limit: '256kb' }));
+// Parse JSON: larger body only for WA export paste (admin parse route)
+const jsonSmall = express.json({ limit: '256kb' });
+const jsonWaParse = express.json({ limit: '3mb' });
+app.use((req, res, next) => {
+  if (req.path === '/api/naboto/admin/wa-parse' && req.method === 'POST') {
+    return jsonWaParse(req, res, next);
+  }
+  return jsonSmall(req, res, next);
+});
 app.use(express.urlencoded({ extended: true }));
 
 // Simple cookie parser
@@ -422,6 +430,10 @@ app.get('/api/naboto/query/guests', nabotoQueryGatewayAuth, nabotoQueryGuestsHan
 // NaBoTo: AppSheet read-only (Find) — APPSHEET_* env vars
 app.get('/api/naboto/appsheet', nabotoQueryGatewayAuth, nabotoAppsheetIndexHandler);
 app.get('/api/naboto/appsheet/find/:tableName', nabotoQueryGatewayAuth, nabotoAppsheetFindHandler);
+
+// NaBoTo: WA export parse + JSONL bulk ingest (Bearer OPENCLAW_GATEWAY_TOKEN; for agent exec in UI)
+app.post('/api/naboto/admin/wa-jsonl-ingest', nabotoQueryGatewayAuth, nabotoWaJsonlIngestHandler);
+app.post('/api/naboto/admin/wa-parse', nabotoQueryGatewayAuth, nabotoWaParseHandler);
 
 // Login page - no authentication required
 app.get('/login', (req, res) => {

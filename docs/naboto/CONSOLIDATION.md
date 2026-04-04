@@ -83,9 +83,11 @@ El wrapper inyecta config base de WhatsApp al arrancar (`ensureWhatsAppBaseline`
    ```
    Descubrí el JID en logs del gateway o con `openclaw channels status` / documentación del plugin.
 
-5. **Persistencia a Postgres (cron)** — los jobs **no** van dentro de `openclaw.json`; OpenClaw los guarda en `~/.openclaw/cron/jobs.json`. **Importante:** `POST /api/naboto/observations` usa el Bearer **`NABOTO_INGEST_SECRET`** (variable de Railway), **no** `OPENCLAW_GATEWAY_TOKEN`.
+5. **Persistencia a Postgres (tiempo casi real, sin LLM)** — el wrapper abre un WebSocket al gateway (`sessions.list` → `sessions.messages.subscribe` por cada sesión `whatsapp:group` / `whatsapp:direct`) y en cada evento `session.message` hace `INSERT` directo en `bot_observations` vía `insertBotObservation` (mismo esquema que el HTTP ingest). **No usa** `NABOTO_INGEST_SECRET` ni tokens en esa ruta interna. Desactivar: `NABOTO_WA_LIVE_INGEST=0`. Al arrancar el gateway verás `[naboto-wa-live-ingest] subscribed WA sessions: N` en logs del wrapper.
 
-   Creá el job una vez (comillas simples en `--message` para que `$NABOTO_INGEST_SECRET` no se expanda en tu shell al pegar; el agente dentro del contenedor sí la resuelve en `exec`):
+6. **Persistencia opcional (cron + LLM)** — los jobs **no** van dentro de `openclaw.json`; OpenClaw los guarda en `~/.openclaw/cron/jobs.json`. Útil como respaldo o tareas distintas; **no** es obligatorio si el live ingest ya corre. **Importante:** `POST /api/naboto/observations` por HTTP usa el Bearer **`NABOTO_INGEST_SECRET`** (variable de Railway), **no** `OPENCLAW_GATEWAY_TOKEN`.
+
+   Si querés redundancia con el agente, creá el job una vez (comillas simples en `--message` para que `$NABOTO_INGEST_SECRET` no se expanda en tu shell al pegar; el agente dentro del contenedor sí la resuelve en `exec`):
    ```bash
    openclaw cron add \
      --name "wa-group-persist" \
@@ -96,9 +98,9 @@ El wrapper inyecta config base de WhatsApp al arrancar (`ensureWhatsAppBaseline`
    ```
    Sustituí `8080` si tu `PORT` en Railway es otro. Si `NABOTO_INGEST_SECRET` no está definido en el servicio, configurála en **Variables** (misma que usás para ingest externo).
 
-6. **Verificar**: `openclaw cron list`, enviar un mensaje de prueba en el grupo, tras la corrida (o `openclaw cron run <id> --due`) consultar `GET .../api/naboto/query/observations?hours=6`. El bot **no responde** en grupos en Fase 1 (`SOUL.md`).
+7. **Verificar**: enviar un mensaje en un grupo allowlist; en segundos debería aparecer en `GET .../api/naboto/query/observations?hours=1` con `detected_type` `wa_live_group` o `wa_live_dm`. Opcional: `openclaw cron list` / `cron run` si mantenés el job de respaldo. El bot **no responde** en grupos en Fase 1 (`SOUL.md`).
 
-**Si el gateway falló con config inválida** (`cron.jobs` o `groups` array): redeploy de esta imagen; al arrancar se elimina `cron.jobs` y se corrige `groups` si venía como array. Luego completá el paso 4–5.
+**Si el gateway falló con config inválida** (`cron.jobs` o `groups` array): redeploy de esta imagen; al arrancar se elimina `cron.jobs` y se corrige `groups` si venía como array. Luego completá allowlist de grupos y verificación (pasos 4–7).
 
 ### Fase 2: Bot activo (número NaBoTo oficial)
 

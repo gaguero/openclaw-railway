@@ -12,7 +12,7 @@
     "dev": "node --watch src/server.js",
     "test": "node --test test/*.test.js",
     "parse-wa-groups": "node scripts/parse-wa-groups-nbdt.mjs",
-    "test:unit": "node --test test/channels.test.js test/config-builder.test.js test/naboto-appsheet-helpers.test.js test/naboto-query-read.test.js test/naboto-wa-ingest-admin.test.js test/wa-groups-parse.test.js",
+    "test:unit": "node --test test/channels.test.js test/config-builder.test.js test/naboto-appsheet-helpers.test.js test/naboto-query-read.test.js test/naboto-wa-ingest-admin.test.js test/naboto-wa-live-ingest.test.js test/wa-groups-parse.test.js",
     "test:e2e": "node --test test/deploy-flow.test.js"
   },
   "dependencies": {

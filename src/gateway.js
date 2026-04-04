@@ -217,6 +217,15 @@ function stopDaemonPoll() {
   }
 }
 
+/** Start NaBoTo WA → Postgres live ingest (no LLM); idempotent. */
+function scheduleNabotoWaLiveIngest() {
+  queueMicrotask(() => {
+    import('./naboto-wa-live-ingest.js')
+      .then((m) => m.startNabotoWaLiveIngest())
+      .catch((e) => console.warn('[naboto-wa-live-ingest] start failed:', e.message));
+  });
+}
+
 /**
  * Start the OpenClaw gateway process
  * @returns {Promise<void>}
@@ -224,6 +233,7 @@ function stopDaemonPoll() {
 export async function startGateway() {
   if (isGatewayRunning()) {
     console.log('Gateway is already running');
+    scheduleNabotoWaLiveIngest();
     return;
   }
 
@@ -253,6 +263,7 @@ export async function startGateway() {
     gatewayStartTime = gatewayStartTime || Date.now();
     startDaemonPoll(port);
     isStarting = false;
+    scheduleNabotoWaLiveIngest();
     return;
   } catch {
     // Port not in use — proceed with normal start
@@ -861,6 +872,7 @@ export async function startGateway() {
     setGatewayReady(true);
     isStarting = false;
     console.log('Gateway is ready');
+    scheduleNabotoWaLiveIngest();
 
     await runPostStartupTasks(configFile);
   } catch (err) {
@@ -1206,6 +1218,7 @@ function pollUntilReady(port, configFile, originalToken, stateDir) {
       clearInterval(timer);
       syncGatewayToken(configFile, originalToken, stateDir);
       setGatewayReady(true);
+      scheduleNabotoWaLiveIngest();
 
       await runPostStartupTasks(configFile, 'background poll');
     } catch {
@@ -1244,6 +1257,13 @@ async function killDaemonOnPort(port, timeoutMs = 10000) {
  * @returns {Promise<void>}
  */
 export async function stopGateway() {
+  try {
+    const { stopNabotoWaLiveIngest } = await import('./naboto-wa-live-ingest.js');
+    stopNabotoWaLiveIngest();
+  } catch {
+    /* optional */
+  }
+
   if (!isGatewayRunning()) {
     return;
   }

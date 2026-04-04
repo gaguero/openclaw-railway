@@ -59,6 +59,7 @@ import {
   nabotoWaParseHandler,
   nabotoWaParseGetHintHandler,
 } from './naboto-wa-ingest-admin.js';
+import { stopNabotoWaLiveIngest } from './naboto-wa-live-ingest.js';
 
 // Configuration
 const PORT = process.env.PORT || 8080;
@@ -1723,6 +1724,8 @@ async function shutdown(signal) {
   server.close(() => {
     console.log('HTTP server closed');
   });
+
+  stopNabotoWaLiveIngest();
 
   // Stop gateway
   await stopGateway();

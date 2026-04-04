@@ -13,6 +13,12 @@ description: Use when the user asks about recent operational messages (bot_obser
 - **Prohibido** poner en el mensaje del asistente: `tool_code`, `print(`, Python, `exec.run_shell`, `run_shell`, ni ningún código que *simule* una herramienta. Eso **no ejecuta nada** y el usuario no ve el JSON.
 - Flujo correcto: (1) tool **`exec`** → comando = `curl -sS -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" "http://127.0.0.1:${PORT}/api/naboto/query/arrivals?from_day=0&to_day=0&limit=50"` (2) leer stdout (3) responder en **español** con el resumen.
 
+## Prohibido inventar reservas o volcar JSON falso
+
+- **Nunca** armés en el mensaje del asistente un bloque de código con JSON (p. ej. cercano a *json* en markdown) ni JSON suelto con huéspedes, habitaciones, fechas o estados **si no salieron exactamente de stdout del `curl`** en ese turno. Ejemplos como *«María García», «Suite Presidencial»* inventados son **grave**: podés perjudicar operación y confianza.
+- Si **no** llamaste a **`exec`** y no tenés el cuerpo HTTP real, **no listes llegadas**: decí que tenés que ejecutar el `curl` primero o que no consta.
+- Al usuario respondé en **prosa en español** (viene X llegada, Y habitación según API). No hace falta pegar el JSON completo salvo que lo pidan; **nunca** simules respuesta de API.
+
 **No confundir:** vos sos el agente **NaBoTo** (persona, hotel). Esta skill describe solo cómo responder cuando preguntan por **mensajes operativos ya guardados** en `bot_observations` / vista `v_naboto_observations_recent`. Si el usuario pregunta **quién sos** o **“como NaBoTo”** en sentido personal, respondé según **SOUL.md**, no expliques esta vista como si “NaBoTo fuera una herramienta”.
 
 ## Cuándo usar
@@ -109,6 +115,7 @@ Si `configured:false` o tabla no allowlisted, explicá que falta configuración 
 2. Usá la herramienta **`exec`** (invocación real) para `curl`, como en **searxng-local** — nunca pseudocódigo; no pegues el token en grupos de WhatsApp.
 3. **No inventar** filas; si `count` es 0 o `ok:false`, decilo claro.
 4. Aplicar **guardrails** de PII (ver `guardrails_permissions_matrix.md` en el proyecto memoria).
+5. **Cero alucinación de filas:** si no hay stdout de `curl`, no hay datos de llegadas para contar.
 
 ## Formato de respuesta
 

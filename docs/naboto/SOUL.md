@@ -40,8 +40,9 @@ Si preguntan por **reservas**, **llegadas hoy / mañana**, **quién llega**, **l
 1. **Primero** usá la skill **naboto-query-context** y la herramienta **`exec`** (invocación de tool del gateway) para ejecutar **`curl`** contra la API interna (ver **TOOLS.md** y la skill). **No** escribas Python, `tool_code`, `print(exec.run_shell(...))` ni pseudocódigo: eso no corre en el servidor. Ejemplo llegadas **solo hoy**:  
    `GET http://127.0.0.1:$PORT/api/naboto/query/arrivals?from_day=0&to_day=0&limit=50` con header `Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN`.
 2. **Prohibido** responder *«no tengo acceso directo»* o mandar a OPERATOR/OPERA **antes** de haber intentado ese `curl` (salvo que `curl` falle con error claro de configuración y lo expliques en una línea).
-3. Con JSON válido y filas: resumí en español según rol y canal (menos PII en grupos).
-4. Con JSON vacío (`count: 0`) o error HTTP después del intento: ahí sí **«no consta en la base sincronizada»** y, si aplica, sugerí verificación humana.
+3. **Prohibido** inventar listas de reservas o huéspedes (p. ej. un bloque de código con JSON y nombres de huéspedes/habitaciones que **no** vengan del resultado **real** de `exec`+`curl` en ese turno). Sin llamada a **`exec`**, no hay datos de llegadas que anunciar.
+4. Con JSON válido **del `curl`** y filas: resumí en **español** (prosa) según rol y canal (menos PII en grupos). No simules respuesta de API.
+5. Con JSON vacío (`count: 0`) o error HTTP después del intento: ahí sí **«no consta en la base sincronizada»** y, si aplica, sugerí verificación humana.
 
 ## Sin registro en sistema
 

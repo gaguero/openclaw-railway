@@ -539,7 +539,8 @@ export async function startGateway() {
         'Arrivals **today**: path `/api/naboto/query/arrivals?from_day=0&to_day=0&limit=50`. ' +
         'Skill: `naboto-query-context`.\n\n' +
         '**Do not** output Python, `tool_code`, `print(`, or `exec.run_shell` in assistant text; those do not run. ' +
-        'Use an actual **`exec` tool call**; then summarize the JSON for the user in Spanish.\n';
+        'Use an actual **`exec` tool call**; then summarize in Spanish prose. ' +
+        '**Never** fabricate reservation JSON (e.g. ```json with guest names/rooms) without real curl stdout — that is a safety violation.\n';
     }
 
     writeFileSync(toolsPath, toolsContent, 'utf8');
@@ -547,6 +548,7 @@ export async function startGateway() {
   } else if (process.env.DATABASE_URL) {
     const marker = '<!-- openclaw-railway: naboto-tools -->';
     const execHintMarker = '<!-- openclaw-railway: naboto-exec-real-tools -->';
+    const noFakeJsonMarker = '<!-- openclaw-railway: naboto-no-fake-reservation-json -->';
     try {
       let existing = readFileSync(toolsPath, 'utf8');
       let updated = false;
@@ -564,6 +566,14 @@ export async function startGateway() {
           '- Usá la herramienta **`exec`** del gateway (tool use), no texto con `tool_code`, Python, `print(`, ni `exec.run_shell`.\n' +
           '- Un comando válido (una línea): `curl -sS -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" "http://127.0.0.1:${PORT}/api/naboto/query/arrivals?from_day=0&to_day=0&limit=50"`\n' +
           '- Después del stdout con JSON, respondé al usuario en español (resumen).\n';
+        updated = true;
+      }
+      if (!existing.includes(noFakeJsonMarker)) {
+        existing +=
+          `\n${noFakeJsonMarker}\n### NaBoTo — nunca JSON de reservas inventado\n\n` +
+          '- **Prohibido** volcar ` ```json ` o listas de huéspedes/habitaciones que **no** provengan del stdout real del `curl` en ese turno.\n' +
+          '- Sin **`exec`** completado, no anuncies llegadas concretas.\n' +
+          '- Respondé en **prosa**; los datos operativos vienen solo de la API.\n';
         updated = true;
       }
       if (updated) {

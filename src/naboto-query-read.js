@@ -114,31 +114,36 @@ export async function nabotoQueryArrivalsHandler(req, res) {
 
   const limit = clampInt(req.query.limit, 35, 1, 80);
 
-  // Column set must match deployed NBDT schema (many DBs have no confirmation_code on reservations).
+  // NBDT schema: reservations.arrival / .departure, reservations.guest_id → guests.id
+  // (see memory/nbdt_postgres_schema_reference.md)
   const primary = `
     SELECT r.id,
-           r.arrival_date::text AS arrival_date,
-           r.departure_date::text AS departure_date,
+           r.arrival::text AS arrival_date,
+           r.departure::text AS departure_date,
+           r.room,
+           r.status,
            g.full_name AS guest_name
     FROM reservations r
-    LEFT JOIN guests g ON g.id = r.primary_guest_id
-    WHERE r.arrival_date IS NOT NULL
-      AND r.arrival_date >= (CURRENT_DATE + ($1::int))
-      AND r.arrival_date <= (CURRENT_DATE + ($2::int))
-    ORDER BY r.arrival_date ASC
+    LEFT JOIN guests g ON g.id = r.guest_id
+    WHERE r.arrival IS NOT NULL
+      AND (r.arrival::date) >= (CURRENT_DATE + ($1::int))
+      AND (r.arrival::date) <= (CURRENT_DATE + ($2::int))
+    ORDER BY r.arrival ASC
     LIMIT $3
   `;
 
   const fallback = `
     SELECT r.id,
-           r.arrival_date::text AS arrival_date,
-           r.departure_date::text AS departure_date,
+           r.arrival::text AS arrival_date,
+           r.departure::text AS departure_date,
+           r.room,
+           r.status,
            NULL::text AS guest_name
     FROM reservations r
-    WHERE r.arrival_date IS NOT NULL
-      AND r.arrival_date >= (CURRENT_DATE + ($1::int))
-      AND r.arrival_date <= (CURRENT_DATE + ($2::int))
-    ORDER BY r.arrival_date ASC
+    WHERE r.arrival IS NOT NULL
+      AND (r.arrival::date) >= (CURRENT_DATE + ($1::int))
+      AND (r.arrival::date) <= (CURRENT_DATE + ($2::int))
+    ORDER BY r.arrival ASC
     LIMIT $3
   `;
 

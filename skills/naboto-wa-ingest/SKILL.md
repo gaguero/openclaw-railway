@@ -1,6 +1,6 @@
 ---
 name: naboto-wa-ingest
-description: Use when the user wants to parse a WhatsApp "WA GROUPS" text export, dry-run bulk ingest, or load historical messages into bot_observations from the server-side JSONL (same gateway Bearer as queries). Triggers via tool exec + curl to POST /api/naboto/admin/wa-parse or /api/naboto/admin/wa-jsonl-ingest on the wrapper (127.0.0.1 + NABOTO_WRAPPER_PORT). Do not simulate curl output; execute real exec. Spanish summaries for the user.
+description: Use when the user wants to parse a WhatsApp "WA GROUPS" text export, dry-run bulk ingest, or load historical messages into bot_observations from the server-side JSONL (same gateway Bearer as queries). For JSONL dry-run from chat, prefer GET wa-jsonl-ingest?source=preview (OpenClaw exec often maps curl to HTTP GET without POST body). Wrapper HTTP is usually 127.0.0.1:8080 inside the container. Spanish summaries for the user.
 ---
 
 # Ingesta histórica WA → `bot_observations` (UI / conversación)
@@ -10,7 +10,12 @@ El usuario puede pedirte **en el chat** cosas como: *«simulá la ingesta del JS
 ## Auth y URL base
 
 - Header: `Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN` (mismo token que consultas NaBoTo).
-- Base: `http://127.0.0.1:${NABOTO_WRAPPER_PORT:-8080}` — **no** uses `${PORT}` literal en la URL.
+- **Puerto HTTP del wrapper** (Express con `/api/naboto/...`): en Railway / Docker suele ser **`8080`**. Si `${NABOTO_WRAPPER_PORT:-8080}` no se expande en tu `exec`, usá **`http://127.0.0.1:8080`** literal.
+- **No** confundas con el WebSocket del gateway (**18789**): las rutas admin NaBoTo van al **wrapper HTTP**, no al WS.
+
+### OpenClaw `exec` y “fetch”
+
+En los logs del gateway a veces verás que `exec` ejecuta un **fetch GET** en lugar de un POST con `-d`. Si el dry-run con POST falla o el body no llega, usá **GET** (más abajo): el servidor trata GET como **dry-run obligatorio** (nunca inserta filas).
 
 ## 1) Descubrir rutas admin (opcional)
 
@@ -43,25 +48,32 @@ Respuesta útil: `sections`, `records`, `sample` (filas ejemplo). Explicá en **
 
 El archivo **`scripts/fixtures/_parsed-preview.jsonl`** va **dentro de la imagen Docker** si está en el repo al hacer build. Así el usuario puede decir *«dry-run del preview»* sin pegar el JSONL.
 
-**Dry-run** (solo cuenta, no inserta):
+**Dry-run (preferido en el chat — GET, sin body):**
 
-- **`source` debe ser el string `preview` en minúsculas** (el servidor acepta alias `default`, `jsonl`, `parsed-preview` por si el modelo se equivoca).
-- **Obligatorio:** `-H "Content-Type: application/json"`; si falta, el body llega vacío y responde `Invalid source`.
+```bash
+curl -sS -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" \
+  "http://127.0.0.1:8080/api/naboto/admin/wa-jsonl-ingest?source=preview&limit=5000"
+```
+
+- **`source=preview`** (minúsculas; alias: `default`, `jsonl`, `parsed-preview` vía normalización en POST; en query usá `preview`).
+- GET **siempre** es simulación (no escribe en la DB).
+
+**Dry-run vía POST** (si tu `exec` sí respeta `-d` y `Content-Type: application/json`):
 
 ```bash
 curl -sS -X POST -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"source":"preview","dry_run":true,"limit":5000}' \
-  "http://127.0.0.1:${NABOTO_WRAPPER_PORT:-8080}/api/naboto/admin/wa-jsonl-ingest"
+  "http://127.0.0.1:8080/api/naboto/admin/wa-jsonl-ingest"
 ```
 
-**Ingesta real** (inserta filas; **irreversible** salvo limpieza manual en DB):
+**Ingesta real** (solo **POST**; **irreversible** salvo limpieza manual en DB):
 
 ```bash
 curl -sS -X POST -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"source":"preview","dry_run":false,"limit":100}' \
-  "http://127.0.0.1:${NABOTO_WRAPPER_PORT:-8080}/api/naboto/admin/wa-jsonl-ingest"
+  "http://127.0.0.1:8080/api/naboto/admin/wa-jsonl-ingest"
 ```
 
 - Pedí confirmación explícita antes de `dry_run:false` con `limit` alto.
@@ -73,6 +85,7 @@ curl -sS -X POST -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" \
 2. **PII:** el contenido es operativo sensible; en grupos públicos resumí; en DM con Gerson podés ser más explícito si pide detalle.
 3. **Prohibido** pegar el gateway token en mensajes al usuario.
 4. Si el archivo no está en la imagen (`404` / `file not found`), explicá que hace falta **redeploy** con el fixture en el repo o añadir otro `source` en código.
+5. **No** uses GET sobre `/api/naboto/admin/wa-parse?dry_run=...` — ese endpoint es **solo POST** con JSON; GET devuelve 405 con pista para usar `wa-jsonl-ingest`.
 
 ## Relación con POST `/api/naboto/observations`
 

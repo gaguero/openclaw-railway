@@ -4,6 +4,7 @@ import {
   jsonlRowToObservationBody,
   WA_JSONL_SOURCES,
   normalizeWaJsonlSourceKey,
+  waJsonlIngestParamsFromRequest,
 } from '../src/naboto-wa-ingest-admin.js';
 
 describe('jsonlRowToObservationBody', () => {
@@ -50,6 +51,30 @@ describe('jsonlRowToObservationBody', () => {
 describe('WA_JSONL_SOURCES', () => {
   it('includes preview key', () => {
     assert.ok(WA_JSONL_SOURCES.preview);
+  });
+});
+
+describe('waJsonlIngestParamsFromRequest', () => {
+  it('GET always dry_run and reads query', () => {
+    const p = waJsonlIngestParamsFromRequest({
+      method: 'GET',
+      query: { source: 'preview', limit: '10' },
+      body: {},
+    });
+    assert.equal(p.sourceKey, 'preview');
+    assert.equal(p.dryRun, true);
+    assert.equal(p.limit, 10);
+    assert.equal(p.invalidSource, false);
+  });
+
+  it('POST respects dry_run false', () => {
+    const p = waJsonlIngestParamsFromRequest({
+      method: 'POST',
+      query: {},
+      body: { source: 'preview', dry_run: false, limit: 5 },
+    });
+    assert.equal(p.dryRun, false);
+    assert.equal(p.limit, 5);
   });
 });
 

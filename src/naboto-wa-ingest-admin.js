@@ -43,6 +43,37 @@ function dryRunFromBody(body) {
 }
 
 /**
+ * OpenClaw `exec` often turns `curl` into HTTP GET without a body. GET here is **dry-run only**
+ * (never inserts). Real ingest must use POST + JSON.
+ * @param {import('express').Request} req
+ * @returns {{ sourceKey: string, dryRun: boolean, limit: number, invalidSource: boolean }}
+ */
+function firstQueryValue(v) {
+  if (v === undefined || v === null) return '';
+  if (Array.isArray(v)) return typeof v[0] === 'string' ? v[0] : String(v[0] ?? '');
+  return typeof v === 'string' ? v : String(v);
+}
+
+export function waJsonlIngestParamsFromRequest(req) {
+  const isGet = req.method === 'GET';
+  const q = req.query || {};
+  const body = req.body || {};
+
+  const sourceRaw = isGet ? firstQueryValue(q.source) : firstQueryValue(body.source);
+  const sourceKey = normalizeWaJsonlSourceKey(sourceRaw);
+
+  const dryRun = isGet ? true : dryRunFromBody(body);
+
+  const limitRaw = isGet ? firstQueryValue(q.limit) : body.limit;
+  let limit = parseInt(String(limitRaw ?? ''), 10);
+  if (Number.isNaN(limit) || limit < 1) limit = MAX_INGEST_ROWS;
+  limit = Math.min(limit, MAX_INGEST_ROWS);
+
+  const invalidSource = !sourceKey || !WA_JSONL_SOURCES[sourceKey];
+  return { sourceKey, dryRun, limit, invalidSource };
+}
+
+/**
  * Map one JSONL record from wa-groups parser → body for insertBotObservation.
  * @param {object} row
  * @returns {object|null} null = skip
@@ -87,26 +118,27 @@ function resolveSourcePath(sourceKey) {
 
 /**
  * POST JSON: { source: "preview", dry_run?: boolean, limit?: number }
+ * GET query: ?source=preview&limit=5000 — **always dry-run** (for OpenClaw exec/fetch that cannot POST JSON).
  */
 export async function nabotoWaJsonlIngestHandler(req, res) {
+  if (req.method !== 'GET' && req.method !== 'POST') {
+    return res.status(405).json({ ok: false, error: 'Use GET (dry-run only) or POST' });
+  }
+
   const pool = getNabotoPool();
   if (!pool) {
     return res.status(503).json({ ok: false, error: 'DATABASE_URL not configured' });
   }
 
-  const body = req.body || {};
-  const sourceKey = normalizeWaJsonlSourceKey(body.source);
-  const dryRun = dryRunFromBody(body);
-  let limit = parseInt(String(body.limit ?? ''), 10);
-  if (Number.isNaN(limit) || limit < 1) limit = MAX_INGEST_ROWS;
-  limit = Math.min(limit, MAX_INGEST_ROWS);
+  const { sourceKey, dryRun, limit, invalidSource } = waJsonlIngestParamsFromRequest(req);
 
-  if (!sourceKey || !WA_JSONL_SOURCES[sourceKey]) {
+  if (invalidSource) {
     return res.status(400).json({
       ok: false,
       error: 'Invalid source',
       allowed: Object.keys(WA_JSONL_SOURCES),
-      hint: 'JSON body must be application/json, e.g. {"source":"preview","dry_run":true}. Use lowercase preview.',
+      hint:
+        'GET: /api/naboto/admin/wa-jsonl-ingest?source=preview&limit=5000 (dry-run only). POST JSON: {"source":"preview","dry_run":true}.',
     });
   }
 
@@ -182,6 +214,15 @@ export async function nabotoWaJsonlIngestHandler(req, res) {
   }
 
   return res.status(200).json(stats);
+}
+
+/** GET wa-parse is a common mistake when exec maps curl → fetch (no body). */
+export function nabotoWaParseGetHintHandler(_req, res) {
+  return res.status(405).json({
+    ok: false,
+    error: 'wa-parse requires POST JSON body with string field "text"',
+    hint: 'JSONL dry-run (no body): GET /api/naboto/admin/wa-jsonl-ingest?source=preview&limit=5000 with Bearer token',
+  });
 }
 
 /**

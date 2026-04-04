@@ -54,7 +54,11 @@ import {
   nabotoAppsheetIndexHandler,
   nabotoAppsheetFindHandler,
 } from './naboto-appsheet-read.js';
-import { nabotoWaJsonlIngestHandler, nabotoWaParseHandler } from './naboto-wa-ingest-admin.js';
+import {
+  nabotoWaJsonlIngestHandler,
+  nabotoWaParseHandler,
+  nabotoWaParseGetHintHandler,
+} from './naboto-wa-ingest-admin.js';
 
 // Configuration
 const PORT = process.env.PORT || 8080;
@@ -432,7 +436,9 @@ app.get('/api/naboto/appsheet', nabotoQueryGatewayAuth, nabotoAppsheetIndexHandl
 app.get('/api/naboto/appsheet/find/:tableName', nabotoQueryGatewayAuth, nabotoAppsheetFindHandler);
 
 // NaBoTo: WA export parse + JSONL bulk ingest (Bearer OPENCLAW_GATEWAY_TOKEN; for agent exec in UI)
+app.get('/api/naboto/admin/wa-jsonl-ingest', nabotoQueryGatewayAuth, nabotoWaJsonlIngestHandler);
 app.post('/api/naboto/admin/wa-jsonl-ingest', nabotoQueryGatewayAuth, nabotoWaJsonlIngestHandler);
+app.get('/api/naboto/admin/wa-parse', nabotoQueryGatewayAuth, nabotoWaParseGetHintHandler);
 app.post('/api/naboto/admin/wa-parse', nabotoQueryGatewayAuth, nabotoWaParseHandler);
 
 // Login page - no authentication required

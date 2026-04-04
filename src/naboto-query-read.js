@@ -856,10 +856,16 @@ export async function nabotoQueryIndexHandler(_req, res) {
       endpoints: [
         {
           path: '/api/naboto/admin/wa-jsonl-ingest',
+          method: 'GET',
+          note: 'dry-run only — same as POST with dry_run true; works when exec maps curl to fetch GET',
+          query: { source: 'preview', limit: 'optional max rows to count' },
+        },
+        {
+          path: '/api/naboto/admin/wa-jsonl-ingest',
           method: 'POST',
           body: {
             source: 'preview (see server WA_JSONL_SOURCES)',
-            dry_run: 'true to count only',
+            dry_run: 'true to count only; false inserts rows',
             limit: 'max rows to insert or simulate (default 5000 cap)',
           },
         },

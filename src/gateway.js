@@ -67,6 +67,59 @@ function applyNabotoSkillEntry(prev) {
 const NABOTO_DB_SKILLS = ['naboto-query-context', 'naboto-wa-ingest'];
 
 /**
+ * Ensure WhatsApp channel baseline config for NaBoTo Phase 1 (silent observer).
+ * Only sets defaults — never overwrites user-set values.
+ * After QR link, user populates `groups` via `openclaw config set`.
+ */
+function ensureWhatsAppBaseline(config) {
+  config.channels = config.channels || {};
+  const wa = config.channels.whatsapp;
+  if (!wa || typeof wa !== 'object') return false;
+  if (!wa.enabled) return false;
+  let changed = false;
+  if (wa.dmPolicy === undefined) { wa.dmPolicy = 'disabled'; changed = true; }
+  if (wa.groupPolicy === undefined) { wa.groupPolicy = 'allowlist'; changed = true; }
+  if (!Array.isArray(wa.groups)) { wa.groups = []; changed = true; }
+  if (!Array.isArray(wa.groupAllowFrom)) { wa.groupAllowFrom = ['*']; changed = true; }
+  if (wa.historyLimit === undefined) { wa.historyLimit = 500; changed = true; }
+  if (wa.sendReadReceipts === undefined) { wa.sendReadReceipts = false; changed = true; }
+  if (wa.reactionLevel === undefined) { wa.reactionLevel = 'off'; changed = true; }
+  if (changed) console.log('Applied NaBoTo WhatsApp baseline (Phase 1: silent observer)');
+  return changed;
+}
+
+/**
+ * Ensure cron job for persisting WhatsApp group messages to bot_observations.
+ * Only added when DATABASE_URL is set and channels.whatsapp.enabled is true.
+ */
+function ensureWaGroupPersistCron(config) {
+  if (!process.env.DATABASE_URL) return false;
+  if (!config.channels?.whatsapp?.enabled) return false;
+  config.cron = config.cron || {};
+  if (config.cron.enabled === undefined) config.cron.enabled = true;
+  config.cron.jobs = config.cron.jobs || {};
+  if (config.cron.jobs['wa-group-persist']) return false;
+  const port = nabotoWrapperHttpPort();
+  config.cron.jobs['wa-group-persist'] = {
+    schedule: '0 */4 * * *',
+    sessionTarget: 'isolated',
+    prompt:
+      'Tarea automática de persistencia WA. ' +
+      '1) Usá sessions_list para encontrar sesiones de grupo WhatsApp (session keys que contengan "whatsapp:group"). ' +
+      '2) Para cada sesión, usá sessions_history para leer mensajes recientes (últimas 4 horas). ' +
+      '3) Para cada mensaje de usuario (no tuyo), guardalo con exec curl: ' +
+      `POST http://127.0.0.1:${port}/api/naboto/observations ` +
+      'con header "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" y ' +
+      'header "Content-Type: application/json" y body JSON con campos: ' +
+      'source_group (nombre del grupo), message_author (quien envió), ' +
+      'message_text (texto del mensaje), detected_type "wa_live_group". ' +
+      'No respondas en ningún grupo de WhatsApp. Solo almacena y reporta cuántos mensajes guardaste.',
+  };
+  console.log('Added cron job wa-group-persist (every 4h, WhatsApp group → bot_observations)');
+  return true;
+}
+
+/**
  * Buffer a log line from the gateway process
  * @param {'stdout'|'stderr'} stream - Which stream the line came from
  * @param {string} text - The log text
@@ -685,6 +738,9 @@ export async function startGateway() {
       }
     }
   }
+
+  ensureWhatsAppBaseline(config);
+  ensureWaGroupPersistCron(config);
 
   if (ensureNabotoAgentIdentity(config)) {
     console.log('Applied NaBoTo agent identity (openclaw.json agents.list)');

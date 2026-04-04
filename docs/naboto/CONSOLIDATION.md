@@ -52,6 +52,51 @@ Eso viene del **proveedor LLM** (p. ej. OpenRouter), no de Naboto. El modelo met
 3. **Consultas para el agente:** `GET /api/naboto/query` con header `Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN` (mismo token que el proxy). Probar desde SSH del contenedor: `curl -sS -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" "http://127.0.0.1:${PORT}/api/naboto/query"`.
 4. **AppSheet (opcional):** con `APPSHEET_*` configuradas, `GET /api/naboto/appsheet` y `GET /api/naboto/appsheet/find/NombreTabla?limit=10`.
 
-## WhatsApp (después)
+## WhatsApp — Setup
 
-Seguir [OpenClaw WhatsApp](https://docs.openclaw.ai/channels/whatsapp): `dmPolicy`, `allowFrom`, `groupPolicy`, QR login.
+El wrapper inyecta config base de WhatsApp al arrancar (`ensureWhatsAppBaseline` en `gateway.js`). Solo se aplica si `channels.whatsapp.enabled` ya es `true` en `openclaw.json`.
+
+### Fase 1: Observador silencioso (testing con teléfono personal)
+
+1. **Instalar plugin** (una vez, desde terminal del contenedor):
+   ```bash
+   openclaw plugins install @openclaw/whatsapp
+   ```
+
+2. **Habilitar el canal** (si no existe aún en config):
+   ```bash
+   openclaw config set channels.whatsapp.enabled true
+   ```
+   El wrapper llena los defaults al próximo reinicio: `dmPolicy: "disabled"`, `groupPolicy: "allowlist"`, `groups: []`, `historyLimit: 500`, `sendReadReceipts: false`, `reactionLevel: "off"`.
+
+3. **QR link** con el teléfono personal:
+   ```bash
+   openclaw channels login --channel whatsapp
+   ```
+   Escanear el QR con WhatsApp.
+
+4. **Descubrir grupos** del hotel en los logs del gateway y poblar la allowlist:
+   ```bash
+   railway logs | grep -i group
+   openclaw config set channels.whatsapp.groups '["120363...@g.us"]'
+   ```
+
+5. **Verificar**: el cron `wa-group-persist` (cada 4h) lee mensajes de grupo y los guarda en `bot_observations` (`detected_type: "wa_live_group"`). El bot **no responde** en ningún grupo (instrucciones en `SOUL.md`).
+
+### Fase 2: Bot activo (número NaBoTo oficial)
+
+1. `openclaw channels logout --channel whatsapp`
+2. `openclaw channels login --channel whatsapp` (QR con teléfono NaBoTo)
+3. Actualizar config:
+   ```bash
+   openclaw config set channels.whatsapp.dmPolicy '"allowlist"'
+   openclaw config set channels.whatsapp.sendReadReceipts true
+   openclaw config set channels.whatsapp.reactionLevel '"ack"'
+   openclaw config set channels.whatsapp.allowFrom '["+507..."]'
+   ```
+4. Quitar la sección "Fase 1 silencioso" de `SOUL.md` → el bot responde según reglas de roles/PII.
+
+### Referencia
+
+- [OpenClaw WhatsApp docs](https://docs.openclaw.ai/channels/whatsapp): `dmPolicy`, `allowFrom`, `groupPolicy`, `groupAllowFrom`, `groups`, `historyLimit`.
+- Config gateway: `ensureWhatsAppBaseline()` + `ensureWaGroupPersistCron()` en `src/gateway.js`.

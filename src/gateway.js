@@ -97,6 +97,67 @@ function ensureWhatsAppBaseline(config) {
   return changed;
 }
 
+/** Default test group JID (NBDT) when emergency allowlist is on without explicit JID. */
+const NABOTO_WA_DEFAULT_TEST_GROUP_JID = '120363410193914647@g.us';
+
+/**
+ * Restrict WhatsApp so only specific group JIDs can trigger bot replies (allowlist).
+ * Other groups are dropped by OpenClaw even if the bot is @mentioned.
+ *
+ * - Set `NABOTO_WA_REPLY_GROUPS_ONLY` to a comma-separated list of `...@g.us` JIDs (highest priority).
+ * - Or set `NABOTO_WA_EMERGENCY_TEST_GROUP_ONLY=1` (or `true`) to allow only
+ *   `NABOTO_WA_TEST_GROUP_JID` or the default test group above.
+ * - Set `NABOTO_WA_REPLY_GROUPS_ONLY=0` / `off` / empty with emergency unset to skip (keep existing config).
+ *
+ * @param {object} config
+ * @returns {boolean}
+ */
+function applyNabotoWaReplyGroupsOnlyAllowlist(config) {
+  let raw = process.env.NABOTO_WA_REPLY_GROUPS_ONLY;
+  if (raw !== undefined && raw !== null) {
+    raw = String(raw).trim();
+    if (raw === '0' || raw === 'false' || raw === 'off') {
+      return false;
+    }
+  } else {
+    raw = '';
+  }
+
+  const emerg = process.env.NABOTO_WA_EMERGENCY_TEST_GROUP_ONLY;
+  const emergOn =
+    emerg === '1' || emerg === 'true' || emerg === 'yes' || emerg === 'on';
+
+  if (!raw && emergOn) {
+    raw =
+      (process.env.NABOTO_WA_TEST_GROUP_JID || NABOTO_WA_DEFAULT_TEST_GROUP_JID).trim();
+  }
+
+  if (!raw) return false;
+
+  const jids = raw
+    .split(/[,;\s]+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .filter((s) => s !== '0' && s !== 'false' && s !== 'off');
+  if (jids.length === 0) return false;
+
+  config.channels = config.channels || {};
+  const wa = config.channels.whatsapp;
+  if (!wa || typeof wa !== 'object' || !wa.enabled) return false;
+
+  const groups = {};
+  for (const jid of jids) {
+    groups[jid] = { requireMention: true };
+  }
+  wa.groups = groups;
+  wa.groupPolicy = 'allowlist';
+  console.log(
+    '[NaBoTo] WhatsApp group reply allowlist active — bot may respond only in:',
+    jids.join(', '),
+  );
+  return true;
+}
+
 /**
  * OpenClaw stores cron jobs in ~/.openclaw/cron/jobs.json (CLI: openclaw cron add), not under cron.jobs in openclaw.json.
  * Remove stale invalid key so the gateway can start after an older image wrote it.
@@ -744,6 +805,7 @@ export async function startGateway() {
 
   sanitizeCronConfig(config);
   ensureWhatsAppBaseline(config);
+  applyNabotoWaReplyGroupsOnlyAllowlist(config);
 
   if (ensureNabotoAgentIdentity(config)) {
     console.log('Applied NaBoTo agent identity (openclaw.json agents.list)');

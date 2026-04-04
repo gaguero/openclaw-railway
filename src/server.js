@@ -35,6 +35,18 @@ import { nabotoObservationsHandler, nabotoDbHealthHandler } from './naboto-obser
 import { nabotoProposalsPostHandler, nabotoProposalsListHandler } from './naboto-proposals.js';
 import { nabotoMetricsHandler } from './naboto-metrics.js';
 import { nabotoLiteSummaryHandler } from './naboto-lite-summary.js';
+import {
+  nabotoQueryGatewayAuth,
+  nabotoQueryIndexHandler,
+  nabotoQueryObservationsHandler,
+  nabotoQueryOperaSyncHandler,
+  nabotoQueryArrivalsHandler,
+} from './naboto-query-read.js';
+import {
+  nabotoAppsheetHealthHandler,
+  nabotoAppsheetIndexHandler,
+  nabotoAppsheetFindHandler,
+} from './naboto-appsheet-read.js';
 
 // Configuration
 const PORT = process.env.PORT || 8080;
@@ -379,12 +391,23 @@ app.use((req, res, next) => {
 // Health check endpoints - no authentication required
 app.use('/health', healthRouter);
 app.get('/health/naboto-db', nabotoDbHealthHandler);
+app.get('/health/naboto-appsheet', nabotoAppsheetHealthHandler);
 
 // NaBoTo: append-only message ingest (Bearer NABOTO_INGEST_SECRET; not cookie auth)
 app.post('/api/naboto/observations', nabotoObservationsHandler);
 app.post('/api/naboto/proposals', nabotoProposalsPostHandler);
 app.get('/api/naboto/proposals', nabotoProposalsListHandler);
 app.get('/api/naboto/metrics', nabotoMetricsHandler);
+
+// NaBoTo: read-only DB snapshots for the agent (Bearer OPENCLAW_GATEWAY_TOKEN)
+app.get('/api/naboto/query', nabotoQueryGatewayAuth, nabotoQueryIndexHandler);
+app.get('/api/naboto/query/observations', nabotoQueryGatewayAuth, nabotoQueryObservationsHandler);
+app.get('/api/naboto/query/opera-sync', nabotoQueryGatewayAuth, nabotoQueryOperaSyncHandler);
+app.get('/api/naboto/query/arrivals', nabotoQueryGatewayAuth, nabotoQueryArrivalsHandler);
+
+// NaBoTo: AppSheet read-only (Find) — APPSHEET_* env vars
+app.get('/api/naboto/appsheet', nabotoQueryGatewayAuth, nabotoAppsheetIndexHandler);
+app.get('/api/naboto/appsheet/find/:tableName', nabotoQueryGatewayAuth, nabotoAppsheetFindHandler);
 
 // Login page - no authentication required
 app.get('/login', (req, res) => {

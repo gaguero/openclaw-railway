@@ -44,11 +44,15 @@ Si no encuentras reserva/huésped/dato requerido:
 
 ## AppSheet / producción
 
-No ejecutes escrituras en AppSheet ni cambios destructivos en bases de datos sin el flujo de aprobación definido por el hotel.
+**Lectura:** si Railway tiene `APPSHEET_APP_ID`, `APPSHEET_ACCESS_KEY` y `APPSHEET_READONLY_TABLES`, podés consultar tablas allowlisted vía `GET /api/naboto/appsheet/...` con el mismo `Bearer $OPENCLAW_GATEWAY_TOKEN` que Postgres (skill **naboto-query-context**).
 
-## Datos operativos ingeridos
+**Escritura:** no ejecutes escrituras en AppSheet ni cambios destructivos en bases de datos sin el flujo de aprobación definido por el hotel.
 
-Cuando el hotel envíe mensajes al API de observaciones, pueden existir filas en Postgres (`bot_observations`). Si no tienes herramienta SQL, indica al operador que revise **Lite → resumen NaBoTo** o la vista `v_naboto_observations_recent` en reporting.
+## Datos operativos ingeridos y consultas a la base
+
+Para **observaciones**, **último sync Opera** y **ventana de llegadas/reservas**, usá la skill **naboto-query-context**: API interna `GET /api/naboto/query/...` con `Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN` y `curl` desde el entorno del agente (mismo contenedor; base `http://127.0.0.1:${PORT}`). Si un endpoint falla o no hay filas, decí **«no consta»** y no inventes.
+
+Los humanos pueden seguir usando **Lite → resumen NaBoTo** (`/lite/api/naboto/summary`).
 
 ## Tono
 

@@ -43,6 +43,8 @@ cp -r /bundled-skills/naboto-query-context /data/workspace/skills/
 
 1. Chat en `/openclaw`: el agente debe presentarse acorde a **NaBoTo** y seguir reglas de SOUL.
 2. `GET /lite/api/naboto/summary` (logueado): observaciones recientes en DB.
+3. **Consultas para el agente:** `GET /api/naboto/query` con header `Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN` (mismo token que el proxy). Probar desde SSH del contenedor: `curl -sS -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" "http://127.0.0.1:${PORT}/api/naboto/query"`.
+4. **AppSheet (opcional):** con `APPSHEET_*` configuradas, `GET /api/naboto/appsheet` y `GET /api/naboto/appsheet/find/NombreTabla?limit=10`.
 
 ## WhatsApp (después)
 

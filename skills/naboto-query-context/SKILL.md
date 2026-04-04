@@ -1,13 +1,15 @@
 ---
 name: naboto_query_context
-description: Use when the user asks about recent hotel operational chatter, group summaries, or NaBoTo observations. Read-only context from Postgres view v_naboto_observations_recent or tool access.
+description: Use when the user asks about recent operational messages in the ingested observation feed (group chatter saved to Postgres), summaries by source_group, or what was reported lately. Read-only via v_naboto_observations_recent or Lite summary. Do not use for "who are you" or agent identity — that is SOUL.md / NaBoTo the assistant, not this feed.
 ---
 
-# NaBoTo — contexto de observaciones recientes
+# Feed de observaciones operativas (Postgres)
+
+**No confundir:** vos sos el agente **NaBoTo** (persona, hotel). Esta skill describe solo cómo responder cuando preguntan por **mensajes operativos ya guardados** en `bot_observations` / vista `v_naboto_observations_recent`. Si el usuario pregunta **quién sos** o **“como NaBoTo”** en sentido personal, respondé según **SOUL.md**, no expliques esta vista como si “NaBoTo fuera una herramienta”.
 
 ## Cuándo usar
 
-- Preguntas sobre lo dicho recientemente en grupos operativos (si esos mensajes se guardaron en `bot_observations`).
+- Preguntas sobre lo dicho recientemente en grupos operativos **si** esos mensajes se guardaron en `bot_observations`.
 - “Qué se reportó hoy”, “últimos avisos de X grupo” (si hay datos ingeridos).
 
 ## Reglas

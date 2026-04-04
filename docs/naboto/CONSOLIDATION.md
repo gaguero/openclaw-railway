@@ -29,7 +29,7 @@ Reiniciá el **gateway** tras cambiar SOUL.
 3. **Importante:** si ya tenés `agents.list` con más de un agente o campos distintos, **no** pegues el array completo encima: solo añadí/mergeá:
    - `skills.load.extraDirs` → `["/bundled-skills"]`
    - en el agente `main` (o el default): bloque `identity` con `name`, `theme`, `emoji`
-   - `agents.defaults.skills` → incluí `naboto-query-context` o mergeá con tus skills existentes
+   - **No** uses `agents.defaults.skills` en esta imagen (OpenClaw lo rechaza). La skill se activa con `skills.entries.naboto-query-context` (lo hace el arranque). Si algún agente en `agents.list` tiene `skills: [...]` explícito, añadí ahí `naboto-query-context` o dejá que el wrapper lo mergee al reiniciar.
 4. Validá JSON y reiniciá gateway.
 
 ## Paso 3 — Skill en workspace (alternativa)

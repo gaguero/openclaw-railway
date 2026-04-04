@@ -169,9 +169,16 @@ const NABOTO_AGENT_IDENTITY = {
 export const NABOTO_QUERY_SKILL_ID = 'naboto-query-context';
 
 /**
- * Attach Postgres read skill to every agent when DATABASE_URL is set (multi-agent setups).
- * Without this, only the default agent may see `naboto-query-context` and others answer
- * "no tengo acceso" from SOUL.
+ * Ensure Postgres read skill for agents when DATABASE_URL is set.
+ *
+ * OpenClaw builds shipped with this image reject `agents.defaults.skills` (config invalid).
+ * Global enable stays in `skills.entries['naboto-query-context']` (gateway.js).
+ *
+ * For each `agents.list[]` entry that **explicitly** sets `skills` (including `[]`),
+ * merge in `naboto-query-context`. Agents without a `skills` key inherit all enabled
+ * global skills — do not add a `skills` array (that would replace the default allowlist).
+ *
+ * Removes legacy `agents.defaults.skills` if present (fixes broken deploys).
  *
  * @param {Object} config
  * @param {{ databaseUrl?: string }} [opts] pass DATABASE_URL for tests
@@ -190,12 +197,8 @@ export function ensureNabotoQuerySkillForAgents(config, opts = {}) {
   const skill = NABOTO_QUERY_SKILL_ID;
 
   config.agents.defaults = config.agents.defaults || {};
-  const defSkills = config.agents.defaults.skills;
-  if (!Array.isArray(defSkills)) {
-    config.agents.defaults.skills = [skill];
-    changed = true;
-  } else if (!defSkills.includes(skill)) {
-    config.agents.defaults.skills = [...defSkills, skill];
+  if (Object.hasOwn(config.agents.defaults, 'skills')) {
+    delete config.agents.defaults.skills;
     changed = true;
   }
 
@@ -203,11 +206,10 @@ export function ensureNabotoQuerySkillForAgents(config, opts = {}) {
   if (Array.isArray(list)) {
     for (const agent of list) {
       if (!agent || typeof agent !== 'object') continue;
+      if (!Object.hasOwn(agent, 'skills')) continue;
       const s = agent.skills;
-      if (!Array.isArray(s)) {
-        agent.skills = [skill];
-        changed = true;
-      } else if (!s.includes(skill)) {
+      if (!Array.isArray(s)) continue;
+      if (!s.includes(skill)) {
         agent.skills = [...s, skill];
         changed = true;
       }

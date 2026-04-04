@@ -585,7 +585,9 @@ export async function startGateway() {
   }
 
   if (ensureNabotoQuerySkillForAgents(config)) {
-    console.log('Applied naboto-query-context skill to agents.defaults + all agents.list (DATABASE_URL set)');
+    console.log(
+      'Applied naboto-query-context merge (DATABASE_URL): removed invalid agents.defaults.skills if present; merged into agents.list[].skills where explicitly set',
+    );
   }
 
   writeFileSync(configFile, JSON.stringify(config, null, 2));

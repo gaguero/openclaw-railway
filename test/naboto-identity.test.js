@@ -59,13 +59,29 @@ describe('ensureNabotoQuerySkillForAgents', () => {
     assert.deepEqual(config.agents.list[0].skills, ['other']);
   });
 
-  it('adds skill to defaults and every list agent', () => {
+  it('removes invalid agents.defaults.skills', () => {
+    const config = {
+      agents: {
+        defaults: { skills: ['naboto-query-context', 'x'] },
+        list: [],
+      },
+    };
+    assert.equal(
+      ensureNabotoQuerySkillForAgents(config, { databaseUrl: 'postgres://x' }),
+      true,
+    );
+    assert.equal(Object.hasOwn(config.agents.defaults, 'skills'), false);
+  });
+
+  it('merges skill only into agents.list entries with explicit skills array', () => {
+    const skill = NABOTO_QUERY_SKILL_ID;
     const config = {
       agents: {
         defaults: { model: { primary: 'x' } },
         list: [
           { id: 'main', default: true, skills: ['memory-core'] },
           { id: 'coordinador', skills: [] },
+          { id: 'bare' },
         ],
       },
     };
@@ -73,16 +89,16 @@ describe('ensureNabotoQuerySkillForAgents', () => {
       ensureNabotoQuerySkillForAgents(config, { databaseUrl: 'postgres://x' }),
       true,
     );
-    assert.ok(config.agents.defaults.skills.includes(NABOTO_QUERY_SKILL_ID));
-    assert.ok(config.agents.list[0].skills.includes(NABOTO_QUERY_SKILL_ID));
-    assert.ok(config.agents.list[1].skills.includes(NABOTO_QUERY_SKILL_ID));
+    assert.ok(config.agents.list[0].skills.includes(skill));
+    assert.ok(config.agents.list[1].skills.includes(skill));
+    assert.equal(Object.hasOwn(config.agents.list[2], 'skills'), false);
   });
 
-  it('is idempotent when skill already present', () => {
+  it('is idempotent when skill already present on list agent', () => {
     const skill = NABOTO_QUERY_SKILL_ID;
     const config = {
       agents: {
-        defaults: { skills: [skill] },
+        defaults: {},
         list: [{ id: 'main', skills: [skill] }],
       },
     };
@@ -90,6 +106,6 @@ describe('ensureNabotoQuerySkillForAgents', () => {
       ensureNabotoQuerySkillForAgents(config, { databaseUrl: 'postgres://x' }),
       false,
     );
-    assert.equal(config.agents.defaults.skills.filter(s => s === skill).length, 1);
+    assert.deepEqual(config.agents.list[0].skills, [skill]);
   });
 });

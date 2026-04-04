@@ -15,8 +15,8 @@
   // Agente principal: identidad NaBoTo.
   // Si ya tenés agents.list, solo agregá "identity" al agente default en vez de reemplazar todo el array.
   agents: {
-    // Opcional: añadí "naboto-query-context" a tu lista existente de skills, no la reemplaces sola.
-    // defaults: { skills: ["…tus skills…", "naboto-query-context"] },
+    // No uses agents.defaults.skills en esta imagen (OpenClaw: "Unrecognized key: skills").
+    // Activá la skill vía skills.entries (lo hace el wrapper) o agents.list[].skills si ya usás allowlist por agente.
     list: [
       {
         id: "main",

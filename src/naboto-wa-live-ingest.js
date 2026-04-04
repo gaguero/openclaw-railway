@@ -335,14 +335,10 @@ async function maybeIngestSessionMessage(pool, sessionKey, payload, dedupe) {
 async function subscribeAllWhatsappSessions(rpc, subscribed) {
   let listPayload;
   try {
-    listPayload = await rpc('sessions.list', { allAgents: true }, 20000);
-  } catch {
-    try {
-      listPayload = await rpc('sessions.list', {}, 20000);
-    } catch (e) {
-      console.error('[naboto-wa-live-ingest] sessions.list failed', e.message);
-      return;
-    }
+    listPayload = await rpc('sessions.list', {}, 20000);
+  } catch (e) {
+    console.error('[naboto-wa-live-ingest] sessions.list failed', e.message);
+    return;
   }
 
   const keys = sessionKeysFromListPayload(listPayload);
@@ -350,15 +346,10 @@ async function subscribeAllWhatsappSessions(rpc, subscribed) {
     if (!isWhatsAppIngestSessionKey(key)) continue;
     if (subscribed.has(key)) continue;
     try {
-      await rpc('sessions.messages.subscribe', { sessionKey: key }, 12000);
+      await rpc('sessions.messages.subscribe', { key }, 12000);
       subscribed.add(key);
-    } catch {
-      try {
-        await rpc('sessions.messages.subscribe', { key }, 12000);
-        subscribed.add(key);
-      } catch (e2) {
-        console.warn('[naboto-wa-live-ingest] sessions.messages.subscribe failed for', key, e2.message);
-      }
+    } catch (e2) {
+      console.warn('[naboto-wa-live-ingest] sessions.messages.subscribe failed for', key, e2.message);
     }
   }
 }
@@ -464,10 +455,19 @@ function runOneConnection(pool) {
         const pl = msg.payload;
         const sk =
           sessionKeyFromEventPayload(pl) ||
-          (pl && typeof pl === 'object' ? sessionKeyFromEventPayload(pl.message) : null);
+          (pl && typeof pl === 'object' && pl.message && typeof pl.message === 'object'
+            ? sessionKeyFromEventPayload(pl.message)
+            : null) ||
+          sessionKeyFromEventPayload(msg);
         if (sk) {
           maybeIngestSessionMessage(pool, sk, msg.payload, dedupe).catch((e) =>
             console.error('[naboto-wa-live-ingest] ingest async', e.message),
+          );
+        } else if (process.env.NABOTO_WA_LIVE_INGEST_DEBUG === '1' && pl && typeof pl === 'object') {
+          console.warn(
+            '[naboto-wa-live-ingest] session.message sin session key (payload keys:',
+            Object.keys(pl).join(','),
+            ')',
           );
         }
         return;

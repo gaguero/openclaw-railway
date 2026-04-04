@@ -99,6 +99,18 @@ describe('waJsonlIngestParamsFromRequest', () => {
     assert.equal(p.dryRun, false);
     assert.equal(p.limit, 5);
   });
+
+  it('POST falls back to query when body empty (broken JSON / no Content-Type)', () => {
+    const p = waJsonlIngestParamsFromRequest({
+      method: 'POST',
+      query: { source: 'preview', dry_run: 'true', limit: '10' },
+      body: {},
+    });
+    assert.equal(p.sourceKey, 'preview');
+    assert.equal(p.dryRun, true);
+    assert.equal(p.limit, 10);
+    assert.equal(p.invalidSource, false);
+  });
 });
 
 describe('normalizeWaJsonlSourceKey', () => {

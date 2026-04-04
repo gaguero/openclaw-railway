@@ -136,12 +136,22 @@ export function waJsonlIngestParamsFromRequest(req) {
   const q = req.query || {};
   const body = req.body || {};
 
-  const sourceRaw = isGet ? firstQueryValue(q.source) : firstQueryValue(body.source);
+  // POST: OpenClaw exec/fetch a veces no manda Content-Type JSON → body vacío; usar query como respaldo.
+  const sourceRaw = isGet
+    ? firstQueryValue(q.source)
+    : firstQueryValue(body.source ?? q.source);
   const sourceKey = normalizeWaJsonlSourceKey(sourceRaw);
 
-  const dryRun = isGet ? true : dryRunFromBody(body);
+  const dryRun = isGet
+    ? true
+    : dryRunFromBody({
+        dry_run:
+          body.dry_run !== undefined && body.dry_run !== null && String(body.dry_run) !== ''
+            ? body.dry_run
+            : q.dry_run,
+      });
 
-  const limitRaw = isGet ? firstQueryValue(q.limit) : body.limit;
+  const limitRaw = isGet ? firstQueryValue(q.limit) : (body.limit ?? q.limit);
   let limit = parseInt(String(limitRaw ?? ''), 10);
   if (Number.isNaN(limit) || limit < 1) limit = MAX_INGEST_ROWS;
   limit = Math.min(limit, MAX_INGEST_ROWS);
@@ -215,7 +225,7 @@ export async function nabotoWaJsonlIngestHandler(req, res) {
       error: 'Invalid source',
       allowed: Object.keys(WA_JSONL_SOURCES),
       hint:
-        'GET: /api/naboto/admin/wa-jsonl-ingest?source=preview&limit=5000 (dry-run only). POST JSON: {"source":"preview","dry_run":true}.',
+        'GET: .../wa-jsonl-ingest?source=preview&limit=5000. POST: JSON body o query ?source=preview&dry_run=true&limit=100 (obligatorio Content-Type: application/json si usás -d JSON).',
     });
   }
 

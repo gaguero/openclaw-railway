@@ -76,6 +76,15 @@ curl -sS -X POST -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" \
 
 **Ingesta real** (solo **POST**; **irreversible** salvo limpieza manual en DB):
 
+- Si `exec` **no** manda el JSON bien (body vacío → error *Invalid source*), usá **query en la URL** como respaldo:
+
+```bash
+curl -sS -X POST -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" \
+  "http://127.0.0.1:8080/api/naboto/admin/wa-jsonl-ingest?source=preview&dry_run=false&limit=50"
+```
+
+- Forma “correcta” con JSON (requiere **`Content-Type: application/json`**):
+
 ```bash
 curl -sS -X POST -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" \
   -H "Content-Type: application/json" \
@@ -93,6 +102,8 @@ curl -sS -X POST -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" \
 3. **Prohibido** pegar el gateway token en mensajes al usuario.
 4. Si el archivo no está en la imagen (`404` / `file not found`), explicá que hace falta **redeploy** con el fixture en el repo o añadir otro `source` en código.
 5. **No** uses GET sobre `/api/naboto/admin/wa-parse?dry_run=...` — ese endpoint es **solo POST** con JSON; GET devuelve 405 con pista para usar `wa-jsonl-ingest`.
+6. Si la API responde **Invalid source** en POST, repetí el intento con **`?source=preview`** en la URL (aunque el body venga vacío por el fetch del gateway).
+7. Si hay error en la herramienta: **una** explicación breve + el JSON de error; **prohibido** repetir la misma frase en bucle.
 
 ## Relación con POST `/api/naboto/observations`
 

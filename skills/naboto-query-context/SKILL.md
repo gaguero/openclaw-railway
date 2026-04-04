@@ -1,5 +1,5 @@
 ---
-name: naboto_query_context
+name: naboto-query-context
 description: Use when the user asks about recent operational messages (bot_observations), Opera sync status (opera_sync_log), arrivals (Postgres), or AppSheet Concierge tables (allowlisted read-only Find). Same auth: curl + OPENCLAW_GATEWAY_TOKEN. Do not use for "who are you" or agent identity — that is SOUL.md / NaBoTo the assistant, not this feed.
 ---
 
@@ -54,6 +54,13 @@ Días relativos a **hoy** (`CURRENT_DATE + from_day` … `CURRENT_DATE + to_day`
 ```bash
 curl -sS -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" \
   "http://127.0.0.1:${PORT}/api/naboto/query/arrivals?from_day=0&to_day=7&limit=30"
+```
+
+**Solo llegadas con fecha de hoy** (`from_day` y `to_day` = 0 respecto a `CURRENT_DATE`):
+
+```bash
+curl -sS -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" \
+  "http://127.0.0.1:${PORT}/api/naboto/query/arrivals?from_day=0&to_day=0&limit=50"
 ```
 
 Si la respuesta trae `ok:false`, no inventes datos: comunicá el error o pedí verificación a OPERATOR/ADMIN.

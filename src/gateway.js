@@ -364,6 +364,16 @@ export async function startGateway() {
     }
   }
 
+  // NaBoTo: Postgres query skill (tool name must match folder + SKILL frontmatter: naboto-query-context)
+  if (process.env.DATABASE_URL) {
+    config.skills = config.skills || {};
+    config.skills.entries = config.skills.entries || {};
+    if (!config.skills.entries['naboto-query-context']) {
+      config.skills.entries['naboto-query-context'] = { enabled: true };
+      console.log('Auto-enabled naboto-query-context skill (DATABASE_URL is set)');
+    }
+  }
+
   // Ensure tools.exec exists so the agent can use curl for SearXNG web search
   // and other command-line tools available in the container.
   // tools.exec is enabled by default in OpenClaw; we just ensure the key is present.
@@ -885,6 +895,28 @@ async function runPostStartupTasks(configFile, context = '') {
       }
     } catch (e) {
       console.warn(`Failed to check/re-apply searxng-local${logSuffix}: ${e.message}`);
+    }
+  }
+
+  if (process.env.DATABASE_URL) {
+    try {
+      const liveConfig = JSON.parse(readFileSync(configFile, 'utf-8'));
+      if (!liveConfig.skills?.entries?.['naboto-query-context']?.enabled) {
+        liveConfig.skills = liveConfig.skills || {};
+        liveConfig.skills.entries = liveConfig.skills.entries || {};
+        liveConfig.skills.entries['naboto-query-context'] = { enabled: true };
+        writeFileSync(configFile, JSON.stringify(liveConfig, null, 2));
+        console.log(`Re-applied naboto-query-context skill${logSuffix} (file)`);
+        try {
+          const { gatewayRPC } = await import('./gateway-rpc.js');
+          await gatewayRPC('config.set', { raw: JSON.stringify(liveConfig) });
+          console.log(`Pushed naboto-query-context config to gateway via RPC${logSuffix}`);
+        } catch (rpcErr) {
+          console.warn(`config.set RPC for naboto-query-context failed${logSuffix}: ${rpcErr.message}`);
+        }
+      }
+    } catch (e) {
+      console.warn(`Failed to check/re-apply naboto-query-context${logSuffix}: ${e.message}`);
     }
   }
 

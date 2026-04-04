@@ -32,6 +32,9 @@ import { getSetupPageHTML } from './onboard-page.js';
 import { getUIPageHTML } from './ui-page.js';
 import { getLoginPageHTML } from './login-page.js';
 import { nabotoObservationsHandler, nabotoDbHealthHandler } from './naboto-observations.js';
+import { nabotoProposalsPostHandler, nabotoProposalsListHandler } from './naboto-proposals.js';
+import { nabotoMetricsHandler } from './naboto-metrics.js';
+import { nabotoLiteSummaryHandler } from './naboto-lite-summary.js';
 
 // Configuration
 const PORT = process.env.PORT || 8080;
@@ -379,6 +382,9 @@ app.get('/health/naboto-db', nabotoDbHealthHandler);
 
 // NaBoTo: append-only message ingest (Bearer NABOTO_INGEST_SECRET; not cookie auth)
 app.post('/api/naboto/observations', nabotoObservationsHandler);
+app.post('/api/naboto/proposals', nabotoProposalsPostHandler);
+app.get('/api/naboto/proposals', nabotoProposalsListHandler);
+app.get('/api/naboto/metrics', nabotoMetricsHandler);
 
 // Login page - no authentication required
 app.get('/login', (req, res) => {
@@ -1035,6 +1041,9 @@ app.get('/lite/api/stats', authMiddleware, async (req, res) => {
 
   res.json({ skills: skillsCount, sessions: sessionsCount });
 });
+
+// Lite API: NaBoTo recent observations (Postgres)
+app.get('/lite/api/naboto/summary', authMiddleware, nabotoLiteSummaryHandler);
 
 // Lite API: Daily token usage (via gateway WebSocket RPC)
 app.get('/lite/api/usage', authMiddleware, async (req, res) => {

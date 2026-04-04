@@ -1,49 +1,12 @@
 /**
  * NaBoTo — append-only ingest for bot_observations (Postgres).
- *
- * Railway: link Postgres to the OpenClaw service so DATABASE_URL is set.
- * Set NABOTO_INGEST_SECRET to a long random value; send:
- *   POST /api/naboto/observations
- *   Authorization: Bearer <NABOTO_INGEST_SECRET>
- *   Content-Type: application/json
- *   { "source_group": "Guest Experience", "message_text": "...", "message_author": "+507..." }
- *
- * Optional: detected_type, linked_reservation_id, linked_guest_id, action_taken,
- *           confidence, requires_review (boolean).
+ * See naboto-pool.js for shared pool.
  */
 
-import pg from 'pg';
-
-const { Pool } = pg;
+import { getNabotoPool, nabotoBearerOk } from './naboto-pool.js';
+import { nabotoIngestRateLimit } from './naboto-rate-limit.js';
 
 const MAX_TEXT = 32000;
-
-let pool = null;
-
-function getPool() {
-  const url = process.env.DATABASE_URL;
-  if (!url) {
-    return null;
-  }
-  if (!pool) {
-    pool = new Pool({
-      connectionString: url,
-      max: 5,
-      connectionTimeoutMillis: 8000,
-    });
-  }
-  return pool;
-}
-
-function authOk(req) {
-  const secret = process.env.NABOTO_INGEST_SECRET;
-  if (!secret) {
-    return false;
-  }
-  const authHeader = req.headers.authorization || '';
-  const [type, token] = authHeader.split(/\s+/);
-  return type === 'Bearer' && token === secret;
-}
 
 /**
  * Express handler: POST JSON body → INSERT bot_observations
@@ -60,11 +23,16 @@ export async function nabotoObservationsHandler(req, res) {
     });
   }
 
-  if (!authOk(req)) {
+  const limited = nabotoIngestRateLimit(req);
+  if (limited) {
+    return res.status(limited.status).json(limited.body);
+  }
+
+  if (!nabotoBearerOk(req)) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  const p = getPool();
+  const p = getNabotoPool();
   if (!p) {
     return res.status(503).json({
       error: 'DATABASE_URL not configured',
@@ -144,7 +112,7 @@ export async function nabotoObservationsHandler(req, res) {
  * Optional readiness: verifies DB connectivity (no auth).
  */
 export async function nabotoDbHealthHandler(_req, res) {
-  const p = getPool();
+  const p = getNabotoPool();
   if (!p) {
     return res.status(503).json({ ok: false, reason: 'no DATABASE_URL' });
   }

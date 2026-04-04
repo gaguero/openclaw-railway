@@ -165,6 +165,58 @@ const NABOTO_AGENT_IDENTITY = {
   emoji: '🏨',
 };
 
+/** Skill id = folder name + SKILL frontmatter `name` (must match). */
+export const NABOTO_QUERY_SKILL_ID = 'naboto-query-context';
+
+/**
+ * Attach Postgres read skill to every agent when DATABASE_URL is set (multi-agent setups).
+ * Without this, only the default agent may see `naboto-query-context` and others answer
+ * "no tengo acceso" from SOUL.
+ *
+ * @param {Object} config
+ * @param {{ databaseUrl?: string }} [opts] pass DATABASE_URL for tests
+ * @returns {boolean} true if config changed
+ */
+export function ensureNabotoQuerySkillForAgents(config, opts = {}) {
+  const dbUrl = opts.databaseUrl ?? process.env.DATABASE_URL;
+  if (!dbUrl || !String(dbUrl).trim()) {
+    return false;
+  }
+  if (!config?.agents || typeof config.agents !== 'object') {
+    return false;
+  }
+
+  let changed = false;
+  const skill = NABOTO_QUERY_SKILL_ID;
+
+  config.agents.defaults = config.agents.defaults || {};
+  const defSkills = config.agents.defaults.skills;
+  if (!Array.isArray(defSkills)) {
+    config.agents.defaults.skills = [skill];
+    changed = true;
+  } else if (!defSkills.includes(skill)) {
+    config.agents.defaults.skills = [...defSkills, skill];
+    changed = true;
+  }
+
+  const list = config.agents.list;
+  if (Array.isArray(list)) {
+    for (const agent of list) {
+      if (!agent || typeof agent !== 'object') continue;
+      const s = agent.skills;
+      if (!Array.isArray(s)) {
+        agent.skills = [skill];
+        changed = true;
+      } else if (!s.includes(skill)) {
+        agent.skills = [...s, skill];
+        changed = true;
+      }
+    }
+  }
+
+  return changed;
+}
+
 /**
  * Ensure the default agent presents as NaBoTo (identity in openclaw.json → chat UI + model context).
  * Does not overwrite a custom agent name (anything not in {@link NABOTO_REPLACE_IDENTITY_NAMES}).

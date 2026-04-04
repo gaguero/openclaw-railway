@@ -18,6 +18,8 @@ cp /app/docs/naboto/SOUL.md "$OPENCLAW_WORKSPACE_DIR/SOUL.md"
 # típicamente OPENCLAW_WORKSPACE_DIR=/data/workspace
 ```
 
+Si **ya existe** `SOUL.md` viejo (el bot dice “no tengo acceso” sin hacer `curl`): fusioná a mano la sección **«Reservas, llegadas hoy…»** desde `/app/docs/naboto/SOUL.md`, o reemplazá el archivo una vez (backup antes) con `cp /app/docs/naboto/SOUL.md "$OPENCLAW_WORKSPACE_DIR/SOUL.md"`.
+
 Reiniciá el **gateway** tras cambiar SOUL.
 
 ## Paso 2 — Fusionar `openclaw.json`

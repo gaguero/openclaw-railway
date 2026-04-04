@@ -88,4 +88,10 @@ export function getSectionNames() {
 }
 
 // Re-export migration utilities
-export { migrateConfig, getDefaultConfig, ensureNabotoAgentIdentity } from './migrate.js';
+export {
+  migrateConfig,
+  getDefaultConfig,
+  ensureNabotoAgentIdentity,
+  ensureNabotoQuerySkillForAgents,
+  NABOTO_QUERY_SKILL_ID,
+} from './migrate.js';

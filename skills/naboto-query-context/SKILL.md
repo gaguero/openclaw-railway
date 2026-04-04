@@ -5,6 +5,8 @@ description: Use when the user asks about recent operational messages (bot_obser
 
 # Feed de observaciones operativas (Postgres)
 
+**Obligatorio antes de decir “no tengo acceso”:** si la pregunta es **llegadas hoy**, **reservas con arribo hoy**, **quién llega hoy** o similar → **ejecutá `curl`** al endpoint **arrivals** con `from_day=0` y `to_day=0` (y `limit` razonable) usando `OPENCLAW_GATEWAY_TOKEN`, **luego** interpretá el JSON. No derives a OPERATOR/OPERA sin ese paso.
+
 **No confundir:** vos sos el agente **NaBoTo** (persona, hotel). Esta skill describe solo cómo responder cuando preguntan por **mensajes operativos ya guardados** en `bot_observations` / vista `v_naboto_observations_recent`. Si el usuario pregunta **quién sos** o **“como NaBoTo”** en sentido personal, respondé según **SOUL.md**, no expliques esta vista como si “NaBoTo fuera una herramienta”.
 
 ## Cuándo usar

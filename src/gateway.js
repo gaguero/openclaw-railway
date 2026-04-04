@@ -21,7 +21,12 @@ import {
 import { join } from 'path';
 import crypto from 'crypto';
 import { setGatewayReady } from './health.js';
-import { migrateConfig, getDefaultConfig, ensureNabotoAgentIdentity } from './schema/index.js';
+import {
+  migrateConfig,
+  getDefaultConfig,
+  ensureNabotoAgentIdentity,
+  ensureNabotoQuerySkillForAgents,
+} from './schema/index.js';
 
 let gatewayProcess = null;
 let isShuttingDown = false;
@@ -526,8 +531,33 @@ export async function startGateway() {
       '## Shell\n\n' +
       'Shell execution (`exec` tool) is available for running commands like `curl`, `node`, `python3`, etc.\n';
 
+    if (process.env.DATABASE_URL) {
+      toolsContent +=
+        '\n## NaBoTo / NBDT (Postgres read-only)\n\n' +
+        'Hotel data: use `curl` with header `Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN` against ' +
+        '`http://127.0.0.1:$PORT/api/naboto/query/...`. ' +
+        'Arrivals **today**: `/api/naboto/query/arrivals?from_day=0&to_day=0&limit=50`. ' +
+        'Skill: `naboto-query-context`.\n';
+    }
+
     writeFileSync(toolsPath, toolsContent, 'utf8');
     console.log('Wrote default TOOLS.md with environment tool notes');
+  } else if (process.env.DATABASE_URL) {
+    const marker = '<!-- openclaw-railway: naboto-tools -->';
+    try {
+      let existing = readFileSync(toolsPath, 'utf8');
+      if (!existing.includes(marker)) {
+        existing +=
+          `\n${marker}\n## NaBoTo / NBDT (Postgres read-only)\n\n` +
+          'Use `curl` with `Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN` and ' +
+          '`http://127.0.0.1:$PORT/api/naboto/query/arrivals?from_day=0&to_day=0&limit=50` for arrivals today. ' +
+          'Skill: `naboto-query-context`.\n';
+        writeFileSync(toolsPath, existing, 'utf8');
+        console.log('Appended NaBoTo query hints to existing TOOLS.md');
+      }
+    } catch (e) {
+      console.warn('Could not update TOOLS.md for NaBoTo:', e.message);
+    }
   }
 
   // Ensure custom provider models have adequate contextWindow.
@@ -552,6 +582,10 @@ export async function startGateway() {
 
   if (ensureNabotoAgentIdentity(config)) {
     console.log('Applied NaBoTo agent identity (openclaw.json agents.list)');
+  }
+
+  if (ensureNabotoQuerySkillForAgents(config)) {
+    console.log('Applied naboto-query-context skill to agents.defaults + all agents.list (DATABASE_URL set)');
   }
 
   writeFileSync(configFile, JSON.stringify(config, null, 2));

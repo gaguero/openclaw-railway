@@ -122,6 +122,9 @@ COPY --from=wrapper-builder /app/package.json ./package.json
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
+# NaBoTo consolidation docs (SOUL template + config fragment; entrypoint seeds SOUL on first boot)
+COPY docs/naboto/ /app/docs/naboto/
+
 # Copy pre-bundled skills (Railway-optimized)
 COPY skills/ /bundled-skills/
 

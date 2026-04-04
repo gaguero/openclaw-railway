@@ -1,0 +1,49 @@
+# Consolidación NaBoTo en OpenClaw (Railway)
+
+## Qué queda después de consolidar
+
+- **Identidad** en config: nombre *NaBoTo*, emoji 🏨.
+- **Personalidad y reglas** en `SOUL.md` del workspace (inyectado al contexto del agente).
+- **Skill** `naboto-query-context` disponible desde `/bundled-skills` (vía `skills.load.extraDirs`).
+- **Chat web** en `/openclaw` habla con el mismo agente; **WhatsApp** es opcional y se añade después con `channels.whatsapp`.
+
+## Paso 1 — `SOUL.md` en el workspace
+
+En el **primer arranque** del contenedor con volumen vacío, el `entrypoint` copia `docs/naboto/SOUL.md` → `/data/workspace/SOUL.md` si aún no existe.
+
+Si ya tenías workspace sin SOUL: copiá manualmente (terminal web Railway / Lite):
+
+```bash
+cp /app/docs/naboto/SOUL.md "$OPENCLAW_WORKSPACE_DIR/SOUL.md"
+# típicamente OPENCLAW_WORKSPACE_DIR=/data/workspace
+```
+
+Reiniciá el **gateway** tras cambiar SOUL.
+
+## Paso 2 — Fusionar `openclaw.json`
+
+1. Abrí **Lite** → API de config o descargá `openclaw.json` desde backup/export.
+2. Abrí `docs/naboto/openclaw.fragment.json5` como referencia.
+3. **Importante:** si ya tenés `agents.list` con más de un agente o campos distintos, **no** pegues el array completo encima: solo añadí/mergeá:
+   - `skills.load.extraDirs` → `["/bundled-skills"]`
+   - en el agente `main` (o el default): bloque `identity` con `name`, `theme`, `emoji`
+   - `agents.defaults.skills` → incluí `naboto-query-context` o mergeá con tus skills existentes
+4. Validá JSON y reiniciá gateway.
+
+## Paso 3 — Skill en workspace (alternativa)
+
+Si no querés `extraDirs`, copiá la carpeta del skill al workspace:
+
+```bash
+mkdir -p /data/workspace/skills
+cp -r /bundled-skills/naboto-query-context /data/workspace/skills/
+```
+
+## Paso 4 — Verificación
+
+1. Chat en `/openclaw`: el agente debe presentarse acorde a **NaBoTo** y seguir reglas de SOUL.
+2. `GET /lite/api/naboto/summary` (logueado): observaciones recientes en DB.
+
+## WhatsApp (después)
+
+Seguir [OpenClaw WhatsApp](https://docs.openclaw.ai/channels/whatsapp): `dmPolicy`, `allowFrom`, `groupPolicy`, QR login.

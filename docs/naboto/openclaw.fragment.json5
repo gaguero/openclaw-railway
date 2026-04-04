@@ -1,0 +1,32 @@
+// =============================================================================
+// NaBoTo — fragmento para fusionar en openclaw.json (JSON5)
+// No reemplaces el archivo entero: mezclá con tu agents.list existente.
+// Doc: docs/naboto/CONSOLIDATION.md
+// =============================================================================
+
+{
+  // Carga skills empaquetados en la imagen Docker (/bundled-skills)
+  skills: {
+    load: {
+      extraDirs: ["/bundled-skills"],
+    },
+  },
+
+  // Agente principal: identidad NaBoTo.
+  // Si ya tenés agents.list, solo agregá "identity" al agente default en vez de reemplazar todo el array.
+  agents: {
+    // Opcional: añadí "naboto-query-context" a tu lista existente de skills, no la reemplaces sola.
+    // defaults: { skills: ["…tus skills…", "naboto-query-context"] },
+    list: [
+      {
+        id: "main",
+        default: true,
+        identity: {
+          name: "NaBoTo",
+          theme: "asistente operativo Guest Experience, Nayara Bocas del Toro, hotel NBDT",
+          emoji: "🏨",
+        },
+      },
+    ],
+  },
+}

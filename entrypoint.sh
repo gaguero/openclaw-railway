@@ -45,6 +45,14 @@ fi
 mkdir -p "$OPENCLAW_STATE_DIR" "$OPENCLAW_WORKSPACE_DIR" "$OPENCLAW_WORKSPACE_DIR/memory" "$OPENCLAW_STATE_DIR/workspace/memory"
 chmod 700 "$OPENCLAW_STATE_DIR" "$OPENCLAW_WORKSPACE_DIR" 2>/dev/null || true
 
+# NaBoTo: seed SOUL.md into workspace once (first boot / empty volume)
+NABOTO_SOUL_SRC="/app/docs/naboto/SOUL.md"
+NABOTO_SOUL_DST="${OPENCLAW_WORKSPACE_DIR}/SOUL.md"
+if [ -f "$NABOTO_SOUL_SRC" ] && [ ! -f "$NABOTO_SOUL_DST" ]; then
+    cp "$NABOTO_SOUL_SRC" "$NABOTO_SOUL_DST"
+    echo "Seeded NaBoTo SOUL.md into workspace"
+fi
+
 # Ensure npm global prefix directory exists for in-app upgrades
 NPM_PREFIX="${NPM_CONFIG_PREFIX:-/data/.npm-global}"
 NPM_MODULE_DIR="$NPM_PREFIX/lib/node_modules/openclaw"

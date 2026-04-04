@@ -1,0 +1,14 @@
+Grupo: Test Alpha, descripcion de prueba sin datos reales.
+[10:00 AM, 1/15/2026] Alice Test: Mensaje uno
+segunda linea
+[11:30 PM, 1/15/2026] Bob Test: Ok recibido
+<FIN>
+
+Grupo Guest Experience Test, solo laboratorio.
+[2:00 PM, 3/20/2026] Coordinator: Traslado prueba Oficina - Nayara
+2 PAX
+<END>
+
+NB Maintenance Test, fixture.
+[4:00 PM, 4/1/2026] +507 0000-0000: Cambio de gas por favor villa test
+<EDN>

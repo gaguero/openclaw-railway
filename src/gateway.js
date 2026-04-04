@@ -122,7 +122,7 @@ function backupWhatsAppGroupsForReplyLock(wa) {
 }
 
 /**
- * JIDs we remember across restarts so merge mode can re-add `allow:false` rows after the UI only shows one group.
+ * JIDs remembered across restarts (OpenClaw WA `groups` schema has no per-group `allow` — only listed JIDs go in openclaw.json).
  * File: `naboto-wa-reply-lock-registry.json` in state dir (`jids` array).
  */
 function loadWaReplyLockRegistryJids() {
@@ -159,9 +159,9 @@ function saveWaReplyLockRegistryJids(jids) {
  * - `NABOTO_WA_REPLY_GROUPS_ONLY`: comma-separated `...@g.us` (or `0` / `off` to disable this merge).
  * - `NABOTO_WA_EMERGENCY_TEST_GROUP_ONLY=1`: same as listing `NABOTO_WA_TEST_GROUP_JID` or the default test JID.
  * - `NABOTO_WA_REPLY_GROUPS_MODE`:
- *   - `merge` (default): keep every existing `groups` entry + registry JIDs; set `allow: true` only for listed
- *     reply JIDs, `allow: false` for the rest (stays visible in Control UI; OpenClaw should skip non-allowed).
- *   - `replace`: **destructive** — `groups` only contains reply JIDs (old behavior).
+ *   - `merge` (default): `openclaw.json` lists **only** reply JIDs; merges prior per-group options for those JIDs from disk.
+ *     Other JIDs are **not** valid in WA schema except as allowlist keys — they are tracked only in `naboto-wa-reply-lock-registry.json`.
+ *   - `replace`: same allowlist shape, but each reply JID is set to `{ requireMention: true }` only (drops extra per-group fields).
  *
  * @param {object} config
  * @returns {boolean}
@@ -206,24 +206,8 @@ function applyNabotoWaReplyGroupsOnlyAllowlist(config) {
     .toLowerCase();
   const replace = mode === 'replace' || mode === 'overwrite';
 
-  const replySet = new Set(replyJids);
   const prev =
     wa.groups && typeof wa.groups === 'object' && !Array.isArray(wa.groups) ? { ...wa.groups } : {};
-
-  if (replace) {
-    const groups = {};
-    for (const jid of replyJids) {
-      groups[jid] = { requireMention: true, allow: true };
-    }
-    wa.groups = groups;
-    saveWaReplyLockRegistryJids([...Object.keys(prev).filter((k) => k !== '*'), ...replyJids]);
-    wa.groupPolicy = 'allowlist';
-    console.log(
-      '[NaBoTo] WA reply-lock REPLACE: groups object only contains reply JIDs:',
-      replyJids.join(', '),
-    );
-    return true;
-  }
 
   /** @type {Set<string>} */
   const union = new Set(replyJids);
@@ -236,30 +220,40 @@ function applyNabotoWaReplyGroupsOnlyAllowlist(config) {
 
   if (prev['*']) {
     console.log(
-      '[NaBoTo] WA reply-lock merge: dropping groups."*" (wildcard incompatible with per-group allow); add explicit JIDs in Control UI as needed.',
+      '[NaBoTo] WA reply-lock: dropping groups."*" (wildcard not compatible with explicit reply allowlist).',
     );
   }
 
   const groups = {};
-  for (const jid of union) {
-    const existing = prev[jid];
-    const base =
-      existing && typeof existing === 'object' && !Array.isArray(existing) ? { ...existing } : {};
-    if (replySet.has(jid)) {
-      groups[jid] = { ...base, allow: true, requireMention: true };
+  for (const jid of replyJids) {
+    if (replace) {
+      groups[jid] = { requireMention: true };
     } else {
-      groups[jid] = { ...base, allow: false, requireMention: true };
+      const existing = prev[jid];
+      const base =
+        existing && typeof existing === 'object' && !Array.isArray(existing) ? { ...existing } : {};
+      delete base.allow;
+      groups[jid] = { ...base, requireMention: true };
     }
   }
 
   wa.groups = groups;
   wa.groupPolicy = 'allowlist';
   saveWaReplyLockRegistryJids([...union]);
-  console.log(
-    '[NaBoTo] WA reply-lock MERGE: reply allowed in',
-    replyJids.join(', '),
-    `— ${Object.keys(groups).length} group row(s) in config (others allow:false).`,
-  );
+
+  if (replace) {
+    console.log(
+      '[NaBoTo] WA reply-lock REPLACE: openclaw groups = reply JIDs only:',
+      replyJids.join(', '),
+      `| ${union.size} JID(s) in naboto-wa-reply-lock-registry.json`,
+    );
+  } else {
+    console.log(
+      '[NaBoTo] WA reply-lock MERGE: openclaw groups =',
+      replyJids.join(', '),
+      `| ${union.size} JID(s) tracked in registry (others blocked — not listed in WA schema).`,
+    );
+  }
   return true;
 }
 

@@ -258,9 +258,15 @@ export async function startGateway() {
   config.agents.defaults = config.agents.defaults || {};
   delete config.agents.defaults.persona;
 
-  // SOUL.md: prefer NaBoTo template from image; else generic OpenClaw default.
+  // SOUL.md: NaBoTo template from image, or minimal fallback. Also replace the upstream
+  // factory SOUL ("You're not a chatbot…") once so Railway volumes keep OpenClaw defaults.
   const soulPath = join(workspaceDir, 'SOUL.md');
   const nabotoSoulTemplate = '/app/docs/naboto/SOUL.md';
+  const hasNabotoSoulContent = (text) =>
+    text.includes('Nayara Bocas del Toro') || text.includes('# NaBoTo — alma del agente');
+  const looksLikeOpenclawFactorySoul = (text) =>
+    /you're not a chatbot/i.test(text) && /becoming someone/i.test(text);
+
   if (!existsSync(soulPath)) {
     if (existsSync(nabotoSoulTemplate)) {
       copyFileSync(nabotoSoulTemplate, soulPath);
@@ -271,6 +277,16 @@ export async function startGateway() {
         'You are a helpful, knowledgeable AI assistant running inside an OpenClaw gateway on Railway.\n',
         'utf8');
       console.log('Wrote default SOUL.md');
+    }
+  } else if (existsSync(nabotoSoulTemplate)) {
+    try {
+      const currentSoul = readFileSync(soulPath, 'utf8');
+      if (looksLikeOpenclawFactorySoul(currentSoul) && !hasNabotoSoulContent(currentSoul)) {
+        copyFileSync(nabotoSoulTemplate, soulPath);
+        console.log('Replaced factory OpenClaw SOUL.md with NaBoTo template');
+      }
+    } catch (e) {
+      console.warn('SOUL.md migration check failed:', e.message);
     }
   }
 

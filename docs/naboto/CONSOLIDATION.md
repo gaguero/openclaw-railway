@@ -41,6 +41,10 @@ mkdir -p /data/workspace/skills
 cp -r /bundled-skills/naboto-query-context /data/workspace/skills/
 ```
 
+## Si el chat falla con `Provider finish_reason: error`
+
+Eso viene del **proveedor LLM** (p. ej. OpenRouter), no de Naboto. El modelo meta **`openrouter/openrouter/auto`** suele ser inestable. En esta imagen, el arranque del wrapper **reemplaza** ese valor por un modelo fijo (`openrouter/openai/gpt-4o-mini` por defecto) salvo que pongas **`OPENCLAW_KEEP_OPENROUTER_AUTO=1`**. Para elegir otro modelo: variable **`OPENROUTER_PRIMARY_MODEL`** (id completo tipo `openrouter/anthropic/claude-3.5-sonnet`). Revisá también que la **API key** de OpenRouter esté bien en Railway.
+
 ## Paso 4 — Verificación
 
 1. Chat en `/openclaw`: el agente debe presentarse acorde a **NaBoTo** y seguir reglas de SOUL.

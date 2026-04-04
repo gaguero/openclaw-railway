@@ -26,6 +26,7 @@ import {
   getDefaultConfig,
   ensureNabotoAgentIdentity,
   ensureNabotoQuerySkillForAgents,
+  replaceOpenRouterAutoPrimary,
 } from './schema/index.js';
 
 let gatewayProcess = null;
@@ -647,6 +648,14 @@ export async function startGateway() {
   if (ensureNabotoQuerySkillForAgents(config)) {
     console.log(
       'Applied naboto-query-context merge (DATABASE_URL): removed invalid agents.defaults.skills if present; merged into agents.list[].skills where explicitly set',
+    );
+  }
+
+  if (replaceOpenRouterAutoPrimary(config)) {
+    const primary = config.agents?.defaults?.model?.primary;
+    console.log(
+      `Replaced unstable OpenRouter model openrouter/openrouter/auto → ${primary} (mitigates Provider finish_reason: error). ` +
+        'Override: OPENROUTER_PRIMARY_MODEL. Opt out: OPENCLAW_KEEP_OPENROUTER_AUTO=1.',
     );
   }
 

@@ -168,6 +168,64 @@ const NABOTO_AGENT_IDENTITY = {
 /** Skill id = folder name + SKILL frontmatter `name` (must match). */
 export const NABOTO_QUERY_SKILL_ID = 'naboto-query-context';
 
+/** OpenRouter meta-model; often yields Provider finish_reason: error in production. */
+export const OPENROUTER_AUTO_PRIMARY = 'openrouter/openrouter/auto';
+
+/**
+ * Stable default when replacing {@link OPENROUTER_AUTO_PRIMARY}. Override with `OPENROUTER_PRIMARY_MODEL`.
+ * @returns {string}
+ */
+export function openRouterPrimaryFallback() {
+  const v = (process.env.OPENROUTER_PRIMARY_MODEL || 'openrouter/openai/gpt-4o-mini').trim();
+  return v || 'openrouter/openai/gpt-4o-mini';
+}
+
+/**
+ * Replace `openrouter/openrouter/auto` (and `openrouter/auto`) with a fixed OpenRouter model id.
+ * Skipped when `OPENCLAW_KEEP_OPENROUTER_AUTO=1` or `true`.
+ *
+ * @param {Object} config
+ * @returns {boolean} true if config changed
+ */
+export function replaceOpenRouterAutoPrimary(config) {
+  if (process.env.OPENCLAW_KEEP_OPENROUTER_AUTO === '1' || process.env.OPENCLAW_KEEP_OPENROUTER_AUTO === 'true') {
+    return false;
+  }
+  if (!config || typeof config !== 'object') {
+    return false;
+  }
+
+  const fallback = openRouterPrimaryFallback();
+  const isAuto = s => s === OPENROUTER_AUTO_PRIMARY || s === 'openrouter/auto';
+
+  let changed = false;
+  config.agents = config.agents || {};
+  config.agents.defaults = config.agents.defaults || {};
+  config.agents.defaults.model = config.agents.defaults.model || {};
+  const defPrimary = config.agents.defaults.model.primary;
+  if (typeof defPrimary === 'string' && isAuto(defPrimary)) {
+    config.agents.defaults.model.primary = fallback;
+    changed = true;
+  }
+
+  const list = config.agents.list;
+  if (Array.isArray(list)) {
+    for (const agent of list) {
+      if (!agent || typeof agent !== 'object') continue;
+      if (agent.model && typeof agent.model === 'object' && typeof agent.model.primary === 'string' && isAuto(agent.model.primary)) {
+        agent.model.primary = fallback;
+        changed = true;
+      }
+      if (typeof agent.model === 'string' && isAuto(agent.model)) {
+        agent.model = fallback;
+        changed = true;
+      }
+    }
+  }
+
+  return changed;
+}
+
 /**
  * Ensure Postgres read skill for agents when DATABASE_URL is set.
  *

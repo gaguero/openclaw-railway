@@ -94,4 +94,7 @@ export {
   ensureNabotoAgentIdentity,
   ensureNabotoQuerySkillForAgents,
   NABOTO_QUERY_SKILL_ID,
+  replaceOpenRouterAutoPrimary,
+  openRouterPrimaryFallback,
+  OPENROUTER_AUTO_PRIMARY,
 } from './migrate.js';

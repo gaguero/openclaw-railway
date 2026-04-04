@@ -83,16 +83,18 @@ El wrapper inyecta config base de WhatsApp al arrancar (`ensureWhatsAppBaseline`
    ```
    Descubrí el JID en logs del gateway o con `openclaw channels status` / documentación del plugin.
 
-5. **Persistencia a Postgres (cron)** — los jobs **no** van dentro de `openclaw.json`; OpenClaw los guarda en `~/.openclaw/cron/jobs.json`. Creá el job una vez (el `--message` va entre **comillas simples** para que `$OPENCLAW_GATEWAY_TOKEN` no se expanda en tu shell; el agente sí la usa al ejecutar):
+5. **Persistencia a Postgres (cron)** — los jobs **no** van dentro de `openclaw.json`; OpenClaw los guarda en `~/.openclaw/cron/jobs.json`. **Importante:** `POST /api/naboto/observations` usa el Bearer **`NABOTO_INGEST_SECRET`** (variable de Railway), **no** `OPENCLAW_GATEWAY_TOKEN`.
+
+   Creá el job una vez (comillas simples en `--message` para que `$NABOTO_INGEST_SECRET` no se expanda en tu shell al pegar; el agente dentro del contenedor sí la resuelve en `exec`):
    ```bash
    openclaw cron add \
      --name "wa-group-persist" \
      --cron "0 */4 * * *" \
      --session isolated \
      --no-deliver \
-     --message 'Tarea NaBoTo: persistencia WA. 1) sessions_list → sesiones con whatsapp:group. 2) sessions_history por cada una. 3) Por cada mensaje de usuario, exec curl POST http://127.0.0.1:8080/api/naboto/observations con Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN y Content-Type application/json; JSON: source_group, message_author, message_text, detected_type wa_live_group. No enviar mensajes a WhatsApp. Resumí cuántos insertaste.'
+     --message 'Tarea NaBoTo: persistencia WA. 1) sessions_list → sesiones con whatsapp:group. 2) sessions_history por cada una. 3) Por cada mensaje de usuario, exec curl -sS -X POST -H "Authorization: Bearer $NABOTO_INGEST_SECRET" -H "Content-Type: application/json" -d "{\"source_group\":\"...\",\"message_author\":\"...\",\"message_text\":\"...\",\"detected_type\":\"wa_live_group\"}" http://127.0.0.1:8080/api/naboto/observations (construí el JSON real por mensaje). No enviar mensajes a WhatsApp. Resumí cuántos insertaste.'
    ```
-   Si Railway usa otro puerto para el wrapper, cambiá `8080` en el texto del mensaje.
+   Sustituí `8080` si tu `PORT` en Railway es otro. Si `NABOTO_INGEST_SECRET` no está definido en el servicio, configurála en **Variables** (misma que usás para ingest externo).
 
 6. **Verificar**: `openclaw cron list`, enviar un mensaje de prueba en el grupo, tras la corrida (o `openclaw cron run <id> --due`) consultar `GET .../api/naboto/query/observations?hours=6`. El bot **no responde** en grupos en Fase 1 (`SOUL.md`).
 

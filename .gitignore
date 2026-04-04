@@ -40,6 +40,3 @@ Thumbs.db
 .openclaw/
 workspace/
 data/
-
-# Local WA export parses (PII); keep only wa-groups-sample.txt committed
-scripts/fixtures/_parsed-*.jsonl

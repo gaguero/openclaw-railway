@@ -5,6 +5,9 @@ import {
   WA_JSONL_SOURCES,
   normalizeWaJsonlSourceKey,
   waJsonlIngestParamsFromRequest,
+  explainProcessingSpanish,
+  jsonlRowSummaryForPreview,
+  observationBodyPreview,
 } from '../src/naboto-wa-ingest-admin.js';
 
 describe('jsonlRowToObservationBody', () => {
@@ -51,6 +54,26 @@ describe('jsonlRowToObservationBody', () => {
 describe('WA_JSONL_SOURCES', () => {
   it('includes preview key', () => {
     assert.ok(WA_JSONL_SOURCES.preview);
+  });
+});
+
+describe('explainProcessingSpanish + previews', () => {
+  it('returns 5 steps for a standard row', () => {
+    const row = {
+      source_group: 'G Test',
+      wa_time: '10:00 AM',
+      wa_date: '1/15/2026',
+      message_author: 'Alice',
+      message_text: 'Hola',
+      format: 'standard',
+    };
+    const obs = jsonlRowToObservationBody(row);
+    const steps = explainProcessingSpanish(row, obs);
+    assert.equal(steps.length, 5);
+    assert.ok(steps[0].includes('source_group'));
+    assert.ok(steps.some((s) => s.includes('wa_export_history')));
+    assert.ok(jsonlRowSummaryForPreview(row).message_text_preview.includes('Hola'));
+    assert.ok(observationBodyPreview(obs).detected_type);
   });
 });
 

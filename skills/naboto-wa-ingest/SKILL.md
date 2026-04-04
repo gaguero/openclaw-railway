@@ -10,7 +10,9 @@ El usuario puede pedirte **en el chat** cosas como: *«simulá la ingesta del JS
 ### Regla crítica para `exec` / fetch del Control UI
 
 1. **URL sin variables de bash:** OpenClaw suele ejecutar un **fetch** que **no pasa por bash**, así que la cadena `${NABOTO_WRAPPER_PORT:-8080}` puede quedar **literal** en la URL y fallar o comportarse mal. En **todos** los comandos de esta skill, usá **`http://127.0.0.1:8080`** (número fijo) en la URL, no `${...}`.
-2. **Después del resultado:** leé el JSON de stdout **una vez**. Respondé al usuario en **≤6 viñetas** (p. ej. `dry_run`, `inserted`, `total_lines`, `json_ok`, `skipped_empty`, `errors`). **Prohibido** repetir la misma frase decenas de veces o alucinar cifras que no estén en el JSON.
+2. **Después del resultado:** leé el JSON de stdout **una vez**. Respondé al usuario en **≤6 viñetas** con los totales (`dry_run`, `inserted`, `total_lines`, `json_ok`, `skipped_empty`, `errors`). **Prohibido** repetir la misma frase decenas de veces o alucinar cifras que no estén en el JSON.
+3. **Dry-run (`wa-jsonl-ingest`):** si el JSON trae **`processing_preview`** (hasta 5 ítems), **obligatorio** incluir en la respuesta al usuario, para **cada** ítem: un título *«Mensaje N (línea L del JSONL)»*, el resumen `jsonl`, el objeto `observation_for_insert`, y las viñetas **`como_se_procesa_es`** (cómo se mapea a `bot_observations`). Sin inventar pasos que no estén ahí.
+4. **Parse (`wa-parse`):** si viene **`sample_detailed`**, mismo formato que arriba para las primeras filas del export (texto pegado por el usuario).
 
 ## Auth y URL base
 

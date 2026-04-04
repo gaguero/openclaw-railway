@@ -18,6 +18,83 @@ export const WA_JSONL_SOURCES = {
 const MAX_PARSE_CHARS = 2_000_000;
 const MAX_INGEST_ROWS = 5000;
 
+/** Primeras filas con detalle de mapeo (solo dry-run / para el bot en UI). */
+export const PROCESSING_PREVIEW_MAX = 5;
+
+const TEXT_PREVIEW_LEN = 220;
+
+/**
+ * Subconjunto seguro de la fila JSONL para mostrar al usuario.
+ * @param {object} row
+ */
+export function jsonlRowSummaryForPreview(row) {
+  if (!row || typeof row !== 'object') return {};
+  const mt = typeof row.message_text === 'string' ? row.message_text : '';
+  return {
+    idx: row.idx,
+    section_index: row.section_index,
+    message_index: row.message_index,
+    source_group: row.source_group,
+    format: row.format,
+    wa_time: row.wa_time ?? null,
+    wa_date: row.wa_date ?? null,
+    message_author: row.message_author ?? null,
+    message_text_preview: mt.length > TEXT_PREVIEW_LEN ? `${mt.slice(0, TEXT_PREVIEW_LEN)}…` : mt,
+    parser_note: row.parser_note,
+  };
+}
+
+/**
+ * Cuerpo que iría a INSERT, con texto truncado para JSON.
+ * @param {object} obsBody
+ */
+export function observationBodyPreview(obsBody) {
+  if (!obsBody) return null;
+  const mt = obsBody.message_text || '';
+  return {
+    source_group: obsBody.source_group,
+    message_author: obsBody.message_author,
+    message_text_preview: mt.length > TEXT_PREVIEW_LEN ? `${mt.slice(0, TEXT_PREVIEW_LEN)}…` : mt,
+    detected_type: obsBody.detected_type,
+    requires_review: obsBody.requires_review,
+  };
+}
+
+/**
+ * Pasos en español: cómo se transforma la fila JSONL en `bot_observations`.
+ * @param {object} row
+ * @param {object} obsBody
+ * @returns {string[]}
+ */
+export function explainProcessingSpanish(row, obsBody) {
+  if (!obsBody) return [];
+  const steps = [];
+  steps.push(
+    `1) source_group → columna "grupo origen" en Postgres: "${obsBody.source_group}" (viene del encabezado de sección del export).`,
+  );
+  if (row.wa_time && row.wa_date) {
+    steps.push(
+      `2) message_text → se arma con la marca WA [${String(row.wa_time).trim()}, ${String(row.wa_date).trim()}] seguida del cuerpo del mensaje (un solo campo de texto).`,
+    );
+  } else {
+    steps.push(
+      '2) message_text → sin marca [hora, fecha] en esta fila; solo el texto disponible (p. ej. fragmento o cola parseada).',
+    );
+  }
+  if (obsBody.message_author === null || obsBody.message_author === undefined) {
+    steps.push('3) message_author → NULL (sin autor identificado en el parse).');
+  } else {
+    steps.push(`3) message_author → "${obsBody.message_author}".`);
+  }
+  steps.push(
+    `4) detected_type → "${obsBody.detected_type}" (${obsBody.detected_type === 'wa_export_fragmented' ? 'export sin líneas estándar de WhatsApp' : 'mensaje con patrón estándar'}).`,
+  );
+  steps.push(
+    `5) requires_review → ${obsBody.requires_review ? 'true (marcar para revisión humana antes de automatizar acciones)' : 'false'}.`,
+  );
+  return steps;
+}
+
 /**
  * Normalize `source` from JSON body (models often send "Preview", smart quotes, or trailing junk).
  * @param {unknown} raw
@@ -169,7 +246,11 @@ export async function nabotoWaJsonlIngestHandler(req, res) {
     crlfDelay: Infinity,
   });
 
-  let successCount = 0;
+  /** Ingestiones exitosas (o simuladas) respetando `limit`. */
+  let towardLimit = 0;
+  /** Primeros mensajes mapeables con guía para el bot (solo dry-run). */
+  const processingPreview = [];
+
   for await (const line of rl) {
     const trimmed = line.trim();
     if (!trimmed) continue;
@@ -191,12 +272,25 @@ export async function nabotoWaJsonlIngestHandler(req, res) {
       continue;
     }
 
-    if (successCount >= limit) break;
+    if (dryRun && processingPreview.length < PROCESSING_PREVIEW_MAX) {
+      processingPreview.push({
+        line_in_jsonl: stats.total_lines,
+        jsonl: jsonlRowSummaryForPreview(row),
+        observation_for_insert: observationBodyPreview(obsBody),
+        como_se_procesa_es: explainProcessingSpanish(row, obsBody),
+      });
+    }
 
     if (dryRun) {
-      successCount += 1;
-      stats.inserted += 1;
+      if (towardLimit < limit) {
+        towardLimit += 1;
+        stats.inserted += 1;
+      }
       continue;
+    }
+
+    if (towardLimit >= limit) {
+      break;
     }
 
     const ins = await insertBotObservation(pool, obsBody);
@@ -208,9 +302,15 @@ export async function nabotoWaJsonlIngestHandler(req, res) {
       });
       if (stats.errors.length >= 50) break;
     } else {
-      successCount += 1;
+      towardLimit += 1;
       stats.inserted += 1;
     }
+  }
+
+  if (dryRun) {
+    stats.processing_preview = processingPreview;
+    stats.dry_run_note =
+      'Ninguna fila se escribió en Postgres. "inserted" = mensajes que entrarían dentro de "limit", en orden del archivo. Revisá "processing_preview" para los primeros 5 con detalle de mapeo.';
   }
 
   return res.status(200).json(stats);
@@ -260,11 +360,22 @@ export async function nabotoWaParseHandler(req, res) {
   const parsed = parseWaGroupsExport(raw);
   const records = sectionsToJsonlRecords(parsed, { includeDescription: false });
   const sample = records.slice(0, 5);
+  const sample_detailed = sample.map((row) => {
+    const obs = jsonlRowToObservationBody(row);
+    return {
+      jsonl: jsonlRowSummaryForPreview(row),
+      observation_for_insert: obs ? observationBodyPreview(obs) : null,
+      como_se_procesa_es: obs
+        ? explainProcessingSpanish(row, obs)
+        : ['Esta fila no generaría INSERT (sin message_text útil tras el mapeo).'],
+    };
+  });
 
   return res.json({
     ok: true,
     sections: parsed.sections.length,
     records: records.length,
     sample,
+    sample_detailed,
   });
 }

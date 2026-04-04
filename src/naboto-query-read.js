@@ -857,7 +857,8 @@ export async function nabotoQueryIndexHandler(_req, res) {
         {
           path: '/api/naboto/admin/wa-jsonl-ingest',
           method: 'GET',
-          note: 'dry-run only — same as POST with dry_run true; works when exec maps curl to fetch GET',
+          note:
+            'dry-run only — response includes processing_preview (first 5 rows: jsonl, observation_for_insert, como_se_procesa_es)',
           query: { source: 'preview', limit: 'optional max rows to count' },
         },
         {
@@ -873,7 +874,7 @@ export async function nabotoQueryIndexHandler(_req, res) {
           path: '/api/naboto/admin/wa-parse',
           method: 'POST',
           body: { text: 'full WA GROUPS .txt export' },
-          returns: 'sections count, records count, sample rows (no DB write)',
+          returns: 'sections, records, sample, sample_detailed (first 5 + mapping steps es, no DB write)',
         },
       ],
     },

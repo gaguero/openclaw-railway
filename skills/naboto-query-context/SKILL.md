@@ -11,7 +11,7 @@ description: Use when the user asks about recent operational messages (bot_obser
 
 - Tenés que usar la herramienta nativa de **shell del gateway** (en OpenClaw suele llamarse **`exec`**; llamada a herramienta / tool use del asistente), con **un comando shell** (por ejemplo la línea `curl` de abajo). El proceso corre en el mismo contenedor que el wrapper. Usá **`NABOTO_WRAPPER_PORT`** en la URL (inyectada por config de skill; fallback **8080**); **`OPENCLAW_GATEWAY_TOKEN`** debe estar disponible para `curl`.
 - **Prohibido** poner en el mensaje del asistente: `tool_code`, `print(`, Python, `exec.run_shell`, `run_shell`, ni ningún código que *simule* una herramienta. Eso **no ejecuta nada** y el usuario no ve el JSON.
-- Flujo correcto: (1) tool **`exec`** → comando = `curl -sS -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" "http://127.0.0.1:${NABOTO_WRAPPER_PORT:-8080}/api/naboto/query/arrivals?from_day=0&to_day=0&limit=50"` (2) leer stdout (3) responder en **español** con el resumen. **No** uses solo `$PORT` en `exec`: en el sandbox del agente a veces no existe; esta imagen define **`NABOTO_WRAPPER_PORT`** (skill `env` + proceso gateway).
+- Flujo correcto: (1) tool **`exec`** → comando = `curl -sS -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" "http://127.0.0.1:${NABOTO_WRAPPER_PORT:-8080}/api/naboto/query/arrivals?from_day=0&to_day=0&limit=50"` (2) leer stdout (3) responder en **español** con el resumen. **Copiá la URL tal cual** con `${NABOTO_WRAPPER_PORT:-8080}` — **no** uses `${PORT}`: OpenClaw a veces lo envía **literal** (`http://127.0.0.1:${PORT}/...`) y el fetch falla o pega al puerto equivocado.
 
 ## Prohibido inventar reservas o volcar JSON falso
 

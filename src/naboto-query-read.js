@@ -114,9 +114,9 @@ export async function nabotoQueryArrivalsHandler(req, res) {
 
   const limit = clampInt(req.query.limit, 35, 1, 80);
 
+  // Column set must match deployed NBDT schema (many DBs have no confirmation_code on reservations).
   const primary = `
     SELECT r.id,
-           r.confirmation_code,
            r.arrival_date::text AS arrival_date,
            r.departure_date::text AS departure_date,
            g.full_name AS guest_name
@@ -131,7 +131,6 @@ export async function nabotoQueryArrivalsHandler(req, res) {
 
   const fallback = `
     SELECT r.id,
-           r.confirmation_code,
            r.arrival_date::text AS arrival_date,
            r.departure_date::text AS departure_date,
            NULL::text AS guest_name

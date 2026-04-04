@@ -8,7 +8,7 @@
 import WebSocket from 'ws';
 import { getGatewayToken } from './gateway.js';
 import { getNabotoPool } from './naboto-pool.js';
-import { insertBotObservation } from './naboto-observations.js';
+import { insertBotObservation, NABOTO_MAX_MESSAGE_TEXT } from './naboto-observations.js';
 
 const INTERNAL = process.env.INTERNAL_GATEWAY_PORT || '18789';
 
@@ -131,6 +131,157 @@ export function messageObjectFromEventPayload(payload) {
   return payload;
 }
 
+/**
+ * Truncate for Postgres `message_text` (same cap as insertBotObservation).
+ * @param {string} s
+ * @param {number} [maxLen]
+ * @returns {string}
+ */
+export function truncateObservationText(s, maxLen = NABOTO_MAX_MESSAGE_TEXT) {
+  const t = typeof s === 'string' ? s : String(s ?? '');
+  if (t.length <= maxLen) return t;
+  const note = `\n...[truncado; longitud original ${t.length} caracteres]`;
+  const head = maxLen - note.length;
+  if (head < 200) return t.slice(0, maxLen);
+  return t.slice(0, head) + note;
+}
+
+/**
+ * @param {object} msg
+ * @returns {boolean}
+ */
+export function isWaRevokeOrDelete(msg) {
+  if (!msg || typeof msg !== 'object') return false;
+  if (msg.revoked === true || msg.deleted === true) return true;
+  const stub = msg.messageStubType ?? msg.stubType;
+  if (stub === 1 || stub === 'REVOKE' || stub === 'revoke') return true;
+  const t = String(msg.type || '').toLowerCase();
+  const e = String(msg.event || '').toLowerCase();
+  if (t === 'revoke' || e === 'revoke' || e === 'delete') return true;
+  return false;
+}
+
+/**
+ * @param {object} msg
+ * @returns {boolean}
+ */
+export function isWaEdit(msg) {
+  if (!msg || typeof msg !== 'object') return false;
+  if (msg.edited === true) return true;
+  if (msg.editedAt != null || msg.edited_at != null) return true;
+  const t = String(msg.type || '').toLowerCase();
+  const e = String(msg.event || '').toLowerCase();
+  return t === 'edit' || e === 'edit';
+}
+
+/**
+ * @param {object} msg
+ * @returns {string | null} short Spanish label for media kind
+ */
+export function detectWaMediaKind(msg) {
+  if (!msg || typeof msg !== 'object') return null;
+  const mime = String(msg.mimetype || msg.mimeType || '').toLowerCase();
+  const mt = String(msg.mediaType || msg.messageType || '').toLowerCase();
+  const typRaw = String(msg.type || '').toLowerCase();
+  const ignoreTyp = ['user', 'text', 'chat', 'human', 'assistant', 'tool', 'system', ''].includes(typRaw);
+  const typ = ignoreTyp ? '' : typRaw;
+  if (mime.startsWith('image/') || mt === 'image' || typ === 'image') return 'imagen';
+  if (mime.startsWith('video/') || mt === 'video' || typ === 'video') return 'video';
+  if (mime.startsWith('audio/') || mt === 'audio' || mt === 'ptt' || mt === 'voice' || typ === 'audio' || typ === 'ptt') {
+    return 'audio';
+  }
+  if (mt === 'sticker' || typ === 'sticker') return 'sticker';
+  if (mime.startsWith('application/') || mt === 'document' || typ === 'document') return 'documento';
+  if (mt === 'location' || typ === 'location') return 'ubicacion';
+  if (mt === 'contact' || mt === 'vcard' || typ === 'contact' || typ === 'vcard') return 'contacto';
+  if (mt === 'poll' || typ === 'poll') return 'encuesta';
+  return null;
+}
+
+/**
+ * Caption / filename hints not always in `content`.
+ * @param {object} msg
+ * @returns {string}
+ */
+export function extractWaCaptionAndMeta(msg) {
+  if (!msg || typeof msg !== 'object') return '';
+  const parts = [];
+  const cap =
+    (typeof msg.caption === 'string' && msg.caption.trim()) ||
+    (typeof msg.description === 'string' && msg.description.trim()) ||
+    '';
+  if (cap) parts.push(cap);
+  const fn = typeof msg.fileName === 'string' ? msg.fileName.trim() : typeof msg.file_name === 'string' ? msg.file_name.trim() : '';
+  if (fn) parts.push(`archivo:${fn}`);
+  const mime = typeof msg.mimetype === 'string' ? msg.mimetype.trim() : typeof msg.mimeType === 'string' ? msg.mimeType.trim() : '';
+  if (mime && !cap) parts.push(`mime:${mime}`);
+  return parts.join(' | ').trim();
+}
+
+/**
+ * Build DB row fields from a gateway transcript row (best-effort for WA quirks).
+ * @param {object} rawMsg
+ * @param {string} sessionKey
+ * @returns {{ source_group: string, message_author: string | null, message_text: string, detected_type: string, requires_review?: boolean } | null}
+ */
+export function buildWaLiveObservationBody(rawMsg, sessionKey) {
+  if (!rawMsg || typeof rawMsg !== 'object') return null;
+  const row = normalizeTranscriptRow(rawMsg);
+  if (row.role === 'assistant' || row.role === 'tool' || row.role === 'system') return null;
+
+  const base = detectedTypeForSessionKey(sessionKey);
+  const sg = sourceGroupFromSessionKey(sessionKey);
+  const idPart = row.id ? ` ref:${row.id}` : '';
+
+  if (isWaRevokeOrDelete(rawMsg)) {
+    return {
+      source_group: sg,
+      message_author: row.author,
+      message_text: truncateObservationText(`[WA: mensaje eliminado]${idPart}`.trim()),
+      detected_type: `${base}_revoke`,
+    };
+  }
+
+  const mediaKind = detectWaMediaKind(rawMsg);
+  const extra = extractWaCaptionAndMeta(rawMsg);
+  const bodyText = row.text || extra;
+
+  if (isWaEdit(rawMsg)) {
+    if (!bodyText) return null;
+    return {
+      source_group: sg,
+      message_author: row.author,
+      message_text: truncateObservationText(`[WA: editado] ${bodyText}`),
+      detected_type: `${base}_edit`,
+    };
+  }
+
+  if (mediaKind) {
+    const label = `[WA: ${mediaKind}]`;
+    const combined = [label, bodyText || extra].filter(Boolean).join(' ').trim();
+    const hasCaption =
+      (typeof rawMsg.caption === 'string' && rawMsg.caption.trim()) ||
+      (typeof rawMsg.description === 'string' && rawMsg.description.trim());
+    const hasUserText = Boolean(row.text && String(row.text).trim());
+    return {
+      source_group: sg,
+      message_author: row.author,
+      message_text: truncateObservationText(combined || label),
+      detected_type: `${base}_media`,
+      requires_review: !hasUserText && !hasCaption,
+    };
+  }
+
+  if (!bodyText) return null;
+
+  return {
+    source_group: sg,
+    message_author: row.author,
+    message_text: truncateObservationText(bodyText),
+    detected_type: base,
+  };
+}
+
 let stopRequested = false;
 let reconnectTimer = null;
 /** @type {WebSocket | null} */
@@ -163,21 +314,15 @@ async function maybeIngestSessionMessage(pool, sessionKey, payload, dedupe) {
   const rawMsg = messageObjectFromEventPayload(payload);
   if (!rawMsg) return;
 
-  const { role, text, author, id } = normalizeTranscriptRow(rawMsg);
-  if (!text) return;
-  if (role === 'assistant' || role === 'tool' || role === 'system') return;
+  const body = buildWaLiveObservationBody(rawMsg, sessionKey);
+  if (!body) return;
 
-  const dk = `${sessionKey}|${id}|${text.slice(0, 240)}`;
+  const dk = `${sessionKey}|${body.detected_type}|${body.message_text.slice(0, 240)}`;
   if (dedupe.has(dk)) return;
   dedupe.add(dk);
   if (dedupe.size > 12000) dedupe.clear();
 
-  const ins = await insertBotObservation(pool, {
-    source_group: sourceGroupFromSessionKey(sessionKey),
-    message_author: author,
-    message_text: text,
-    detected_type: detectedTypeForSessionKey(sessionKey),
-  });
+  const ins = await insertBotObservation(pool, body);
   if (!ins.ok) {
     console.warn('[naboto-wa-live-ingest] insert failed', ins.status, ins.json?.error || ins.json);
   }
@@ -238,7 +383,7 @@ async function bootstrapSubscriptions(rpc) {
  */
 function runOneConnection(pool) {
   return new Promise((resolve) => {
-    const token = getToken();
+    const token = getGatewayToken();
     const wsUrl = `ws://127.0.0.1:${INTERNAL}`;
     const dedupe = new Set();
     const subscribedKeys = new Set();

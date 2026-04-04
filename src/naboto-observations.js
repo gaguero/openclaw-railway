@@ -6,7 +6,10 @@
 import { getNabotoPool, nabotoBearerOk } from './naboto-pool.js';
 import { nabotoIngestRateLimit } from './naboto-rate-limit.js';
 
-const MAX_TEXT = 32000;
+/** Max `message_text` length for inserts (HTTP + live ingest). */
+export const NABOTO_MAX_MESSAGE_TEXT = 32000;
+
+const MAX_TEXT = NABOTO_MAX_MESSAGE_TEXT;
 
 const uuidOrNull = (v) => (v && /^[0-9a-f-]{36}$/i.test(v) ? v : null);
 

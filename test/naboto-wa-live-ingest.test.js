@@ -26,6 +26,10 @@ describe('naboto-wa-live-ingest', () => {
       isWhatsAppIngestSessionKey('agent:coordinador:whatsapp:direct:507@s.whatsapp.net'),
       true,
     );
+    assert.equal(
+      isWhatsAppIngestSessionKey('agent:c:WhatsApp:Group:120363410193914647@g.us'),
+      true,
+    );
     assert.equal(isWhatsAppIngestSessionKey('agent:coordinador:cron:x:run:y'), false);
     assert.equal(isWhatsAppIngestSessionKey('agent:coordinador:main'), false);
   });
@@ -34,6 +38,10 @@ describe('naboto-wa-live-ingest', () => {
     assert.equal(
       sourceGroupFromSessionKey('agent:x:whatsapp:group:120363024587546650@g.us'),
       '120363024587546650@g.us',
+    );
+    assert.equal(
+      sourceGroupFromSessionKey('agent:x:WhatsApp:Group:120363410193914647@g.us'),
+      '120363410193914647@g.us',
     );
     assert.equal(
       sourceGroupFromSessionKey('agent:x:whatsapp:direct:50762114762@s.whatsapp.net'),

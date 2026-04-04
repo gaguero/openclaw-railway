@@ -3,6 +3,8 @@
  * Subscribes to gateway WebSocket `session.message` events (no LLM).
  *
  * Disable: NABOTO_WA_LIVE_INGEST=0
+ * NABOTO_WA_SESSION_REFRESH_MS: re-run sessions.list + subscribe (default 60000). 0 = off.
+ * NABOTO_WA_LIVE_INGEST_DEBUG=1: log session.message payloads missing session key.
  */
 
 import WebSocket from 'ws';
@@ -11,6 +13,15 @@ import { getNabotoPool } from './naboto-pool.js';
 import { insertBotObservation, NABOTO_MAX_MESSAGE_TEXT } from './naboto-observations.js';
 
 const INTERNAL = process.env.INTERNAL_GATEWAY_PORT || '18789';
+
+/** Re-list sessions and subscribe to new WhatsApp keys (e.g. after WA hydrates groups). 0 = off. */
+function sessionRefreshIntervalMs() {
+  const v = process.env.NABOTO_WA_SESSION_REFRESH_MS;
+  if (v === '0' || v === 'false' || v === 'off') return 0;
+  const n = Number(v);
+  if (Number.isFinite(n) && n > 0) return n;
+  return 60_000;
+}
 
 /** @returns {boolean} */
 export function waLiveIngestEnabled() {
@@ -25,9 +36,10 @@ export function waLiveIngestEnabled() {
  */
 export function isWhatsAppIngestSessionKey(key) {
   if (typeof key !== 'string') return false;
-  if (!key.includes('whatsapp')) return false;
-  if (key.includes(':cron:')) return false;
-  return key.includes('group:') || key.includes(':direct:');
+  const k = key.toLowerCase();
+  if (!k.includes('whatsapp')) return false;
+  if (k.includes(':cron:')) return false;
+  return k.includes('group:') || k.includes(':direct:');
 }
 
 /**
@@ -35,9 +47,9 @@ export function isWhatsAppIngestSessionKey(key) {
  * @returns {string}
  */
 export function sourceGroupFromSessionKey(sessionKey) {
-  const g = sessionKey.match(/group:([^\s]+)$/);
+  const g = sessionKey.match(/group:([^\s]+)$/i);
   if (g) return g[1].slice(0, 500);
-  const d = sessionKey.match(/direct:([^\s]+)$/);
+  const d = sessionKey.match(/direct:([^\s]+)$/i);
   if (d) return d[1].slice(0, 500);
   return sessionKey.slice(0, 500);
 }
@@ -47,8 +59,9 @@ export function sourceGroupFromSessionKey(sessionKey) {
  * @returns {string}
  */
 export function detectedTypeForSessionKey(sessionKey) {
-  if (sessionKey.includes('group:')) return 'wa_live_group';
-  if (sessionKey.includes(':direct:')) return 'wa_live_dm';
+  const k = sessionKey.toLowerCase();
+  if (k.includes('group:')) return 'wa_live_group';
+  if (k.includes(':direct:')) return 'wa_live_dm';
   return 'wa_live';
 }
 
@@ -375,9 +388,12 @@ async function bootstrapSubscriptions(rpc) {
 function runOneConnection(pool) {
   return new Promise((resolve) => {
     const token = getGatewayToken();
+    const refreshMs = sessionRefreshIntervalMs();
     const wsUrl = `ws://127.0.0.1:${INTERNAL}`;
     const dedupe = new Set();
     const subscribedKeys = new Set();
+    /** @type {ReturnType<typeof setInterval> | null} */
+    let sessionRefreshTimer = null;
 
     /** Connect uses id "1"; RPC ids must start at 2 to avoid collision. */
     let reqCounter = 1;
@@ -500,6 +516,25 @@ function runOneConnection(pool) {
           .then((subs) => {
             subs.forEach((k) => subscribedKeys.add(k));
             console.log('[naboto-wa-live-ingest] subscribed WA sessions:', subscribedKeys.size);
+            if (refreshMs > 0) {
+              sessionRefreshTimer = setInterval(() => {
+                const before = subscribedKeys.size;
+                subscribeAllWhatsappSessions(rpc, subscribedKeys)
+                  .then(() => {
+                    if (subscribedKeys.size !== before) {
+                      console.log(
+                        '[naboto-wa-live-ingest] WA session subscriptions:',
+                        subscribedKeys.size,
+                        '(was',
+                        String(before) + ')',
+                      );
+                    }
+                  })
+                  .catch((e) =>
+                    console.warn('[naboto-wa-live-ingest] periodic sessions refresh', e.message),
+                  );
+              }, refreshMs);
+            }
           })
           .catch((e) => console.error('[naboto-wa-live-ingest] bootstrap failed', e.message));
       }
@@ -510,6 +545,10 @@ function runOneConnection(pool) {
     });
 
     ws.on('close', () => {
+      if (sessionRefreshTimer) {
+        clearInterval(sessionRefreshTimer);
+        sessionRefreshTimer = null;
+      }
       cleanupPending(new Error('ws closed'));
       wsRef = null;
       resolve();

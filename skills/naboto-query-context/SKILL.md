@@ -1,6 +1,6 @@
 ---
 name: naboto-query-context
-description: Use when the user asks about recent operational messages (bot_observations), Opera sync status (opera_sync_log), arrivals (Postgres), or AppSheet Concierge tables (allowlisted read-only Find). Same auth: curl + OPENCLAW_GATEWAY_TOKEN. Do not use for "who are you" or agent identity — that is SOUL.md / NaBoTo the assistant, not this feed.
+description: Use when the user asks about recent operational messages (bot_observations), Opera sync status (opera_sync_log), arrivals, tours, spa/massage bookings, transfers, other hotels, special requests, romantic dinners, guest profiles (Postgres read-only under /api/naboto/query/), or AppSheet Concierge tables (allowlisted read-only Find). Same auth: curl + OPENCLAW_GATEWAY_TOKEN. Do not use for "who are you" or agent identity — that is SOUL.md / NaBoTo the assistant, not this feed.
 ---
 
 # Feed de observaciones operativas (Postgres)
@@ -75,6 +75,44 @@ curl -sS -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" \
 ```bash
 curl -sS -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" \
   "http://127.0.0.1:${NABOTO_WRAPPER_PORT:-8080}/api/naboto/query/arrivals?from_day=0&to_day=0&limit=50"
+```
+
+**Filtros operativos (arrivals y la mayoría de endpoints de ventana):** por defecto se **excluyen** reservas/filas con estado que parezca **cancelado** o **no-show**; para incluirlos usá `include_cancelled=1`. Opcional: `property_id=<id numérico de properties>`. La respuesta incluye `filters_applied` para que no haya ambigüedad.
+
+### Tours (`tour_bookings` + producto / huésped)
+
+Ventana en **`COALESCE(activity_date, schedule.date)`**; excluye cancelados en `guest_status`/`vendor_status` salvo `include_cancelled=1`.
+
+```bash
+curl -sS -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" \
+  "http://127.0.0.1:${NABOTO_WRAPPER_PORT:-8080}/api/naboto/query/tours?from_day=0&to_day=14&limit=40"
+```
+
+### Masajes / spa (`bookings` + `menu_items`)
+
+Por defecto filtra ítems “tipo spa/masaje” (regex en nombres e `item_type`). **`all_services=1`** = cualquier reserva de menú en la ventana. **`q=`** (mín. 2 caracteres) refina por nombre de ítem o `guest_name`. **`include_cancelled=1`** incluye reservas canceladas/no-show.
+
+```bash
+curl -sS -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" \
+  "http://127.0.0.1:${NABOTO_WRAPPER_PORT:-8080}/api/naboto/query/massages?from_day=0&to_day=7&limit=30"
+```
+
+### Traslados, otros hoteles, solicitudes especiales, cenas románticas
+
+Misma idea de **`from_day` / `to_day` / `limit`** (defaults -1 … 14, limit default 30 en estos). Fechas: **`transfers.date`**, **`other_hotel_bookings` → `COALESCE(date, checkin)`**, **`special_requests.date`**, **`romantic_dinners.date`**.
+
+- `GET .../api/naboto/query/transfers?...`
+- `GET .../api/naboto/query/other-hotels?...`
+- `GET .../api/naboto/query/special-requests?...` — opcional **`department=`** (fragmento ILIKE); por defecto oculta estados que parezcan cancel/closed/resolved; **`include_cancelled=1`** los muestra.
+- `GET .../api/naboto/query/romantic-dinners?...`
+
+### Perfiles de huéspedes (`guests`)
+
+**Obligatorio** uno de: **`guest_id=`** (exacto) o **`q=`** (mín. 2 caracteres, búsqueda en nombre). **`limit`** 1–40 (default 15). Tratá email/tel/notas como PII (resumí en canales públicos).
+
+```bash
+curl -sS -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" \
+  "http://127.0.0.1:${NABOTO_WRAPPER_PORT:-8080}/api/naboto/query/guests?guest_id=123"
 ```
 
 Si la respuesta trae `ok:false`, no inventes datos: comunicá el error o pedí verificación a OPERATOR/ADMIN.

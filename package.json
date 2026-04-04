@@ -11,7 +11,7 @@
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "test": "node --test test/*.test.js",
-    "test:unit": "node --test test/channels.test.js test/config-builder.test.js test/naboto-appsheet-helpers.test.js",
+    "test:unit": "node --test test/channels.test.js test/config-builder.test.js test/naboto-appsheet-helpers.test.js test/naboto-query-read.test.js",
     "test:e2e": "node --test test/deploy-flow.test.js"
   },
   "dependencies": {

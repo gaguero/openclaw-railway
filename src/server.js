@@ -41,6 +41,13 @@ import {
   nabotoQueryObservationsHandler,
   nabotoQueryOperaSyncHandler,
   nabotoQueryArrivalsHandler,
+  nabotoQueryToursHandler,
+  nabotoQueryMassagesHandler,
+  nabotoQueryTransfersHandler,
+  nabotoQueryOtherHotelsHandler,
+  nabotoQuerySpecialRequestsHandler,
+  nabotoQueryRomanticDinnersHandler,
+  nabotoQueryGuestsHandler,
 } from './naboto-query-read.js';
 import {
   nabotoAppsheetHealthHandler,
@@ -404,6 +411,13 @@ app.get('/api/naboto/query', nabotoQueryGatewayAuth, nabotoQueryIndexHandler);
 app.get('/api/naboto/query/observations', nabotoQueryGatewayAuth, nabotoQueryObservationsHandler);
 app.get('/api/naboto/query/opera-sync', nabotoQueryGatewayAuth, nabotoQueryOperaSyncHandler);
 app.get('/api/naboto/query/arrivals', nabotoQueryGatewayAuth, nabotoQueryArrivalsHandler);
+app.get('/api/naboto/query/tours', nabotoQueryGatewayAuth, nabotoQueryToursHandler);
+app.get('/api/naboto/query/massages', nabotoQueryGatewayAuth, nabotoQueryMassagesHandler);
+app.get('/api/naboto/query/transfers', nabotoQueryGatewayAuth, nabotoQueryTransfersHandler);
+app.get('/api/naboto/query/other-hotels', nabotoQueryGatewayAuth, nabotoQueryOtherHotelsHandler);
+app.get('/api/naboto/query/special-requests', nabotoQueryGatewayAuth, nabotoQuerySpecialRequestsHandler);
+app.get('/api/naboto/query/romantic-dinners', nabotoQueryGatewayAuth, nabotoQueryRomanticDinnersHandler);
+app.get('/api/naboto/query/guests', nabotoQueryGatewayAuth, nabotoQueryGuestsHandler);
 
 // NaBoTo: AppSheet read-only (Find) — APPSHEET_* env vars
 app.get('/api/naboto/appsheet', nabotoQueryGatewayAuth, nabotoAppsheetIndexHandler);

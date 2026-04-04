@@ -7,10 +7,15 @@ description: Use when the user wants to parse a WhatsApp "WA GROUPS" text export
 
 El usuario puede pedirte **en el chat** cosas como: *«simulá la ingesta del JSONL»*, *«parseá este export»*, *«cargá el preview al Postgres»*. Vos tenés que usar la herramienta **`exec`** con **`curl`** real (igual que **naboto-query-context**).
 
+### Regla crítica para `exec` / fetch del Control UI
+
+1. **URL sin variables de bash:** OpenClaw suele ejecutar un **fetch** que **no pasa por bash**, así que la cadena `${NABOTO_WRAPPER_PORT:-8080}` puede quedar **literal** en la URL y fallar o comportarse mal. En **todos** los comandos de esta skill, usá **`http://127.0.0.1:8080`** (número fijo) en la URL, no `${...}`.
+2. **Después del resultado:** leé el JSON de stdout **una vez**. Respondé al usuario en **≤6 viñetas** (p. ej. `dry_run`, `inserted`, `total_lines`, `json_ok`, `skipped_empty`, `errors`). **Prohibido** repetir la misma frase decenas de veces o alucinar cifras que no estén en el JSON.
+
 ## Auth y URL base
 
 - Header: `Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN` (mismo token que consultas NaBoTo).
-- **Puerto HTTP del wrapper** (Express con `/api/naboto/...`): en Railway / Docker suele ser **`8080`**. Si `${NABOTO_WRAPPER_PORT:-8080}` no se expande en tu `exec`, usá **`http://127.0.0.1:8080`** literal.
+- **Host/puerto del wrapper HTTP:** `http://127.0.0.1:8080` (fijo en `exec`; coincide con `PORT` en Railway salvo override raro).
 - **No** confundas con el WebSocket del gateway (**18789**): las rutas admin NaBoTo van al **wrapper HTTP**, no al WS.
 
 ### OpenClaw `exec` y “fetch”
@@ -21,7 +26,7 @@ En los logs del gateway a veces verás que `exec` ejecuta un **fetch GET** en lu
 
 ```bash
 curl -sS -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" \
-  "http://127.0.0.1:${NABOTO_WRAPPER_PORT:-8080}/api/naboto/query"
+  "http://127.0.0.1:8080/api/naboto/query"
 ```
 
 En la respuesta JSON mirá el objeto **`admin_wa`** (endpoints y cuerpos).
@@ -37,7 +42,7 @@ node -e "const fs=require('fs');const t=fs.readFileSync('/tmp/wa_export.txt','ut
   | curl -sS -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" \
   -H "Content-Type: application/json" \
   -d @- \
-  "http://127.0.0.1:${NABOTO_WRAPPER_PORT:-8080}/api/naboto/admin/wa-parse"
+  "http://127.0.0.1:8080/api/naboto/admin/wa-parse"
 ```
 
 Si el export es **enorme** (> ~2MB) o no cabe en un mensaje, pedí que lo procesen por CLI local o que redeployen el JSONL y usen solo **wa-jsonl-ingest**.

@@ -44,13 +44,21 @@ curl -sS -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" "http://127.0.0.1:${
 
 - `limit` 1–40 (default 15), `hours` 1–168 (default 72)
 - `q` — texto opcional (búsqueda en `message_text`)
-- `group` — fragmento opcional de `source_group`
+- `group` — fragmento opcional de `source_group` (JID o parte del nombre de sesión)
+- `excerpt` — largo del fragmento de texto devuelto (default 500, min 100, max 2000); usá 1500–2000 para reportes largos o análisis detallado; dejá en 500 para resúmenes rápidos
 
-**Contexto WhatsApp en vivo:** cuando exista el job `openclaw cron add` **wa-group-persist** (cada ~4h; ver `docs/naboto/CONSOLIDATION.md`), los mensajes de grupo pueden guardarse en DB con `detected_type = 'wa_live_group'`. Cuando te pregunten por **contexto operativo reciente**, **qué se dijo en el grupo**, o **mensajes de las últimas horas/días**, consultá con **`hours=96`** (4 días) para capturar el historial disponible:
+**Contexto WhatsApp en vivo:** mensajes de grupo guardados con `detected_type = 'wa_live_group'` (ingest automático vía hook + WS + polling). Cuando pregunten por **contexto operativo reciente**, **qué se dijo en el grupo**, o **mensajes de las últimas horas/días**, consultá con **`hours=96`** (4 días):
 
 ```bash
 curl -sS -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" \
   "http://127.0.0.1:${NABOTO_WRAPPER_PORT:-8080}/api/naboto/query/observations?limit=40&hours=96"
+```
+
+Para **análisis detallado o reportes** donde el mensaje puede ser largo (reporte diario, lista de check-ins):
+
+```bash
+curl -sS -H "Authorization: Bearer $OPENCLAW_GATEWAY_TOKEN" \
+  "http://127.0.0.1:${NABOTO_WRAPPER_PORT:-8080}/api/naboto/query/observations?limit=20&hours=96&excerpt=1500"
 ```
 
 Consultas más acotadas:

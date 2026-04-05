@@ -57,6 +57,7 @@ export async function nabotoQueryObservationsHandler(req, res) {
 
   const limit = clampInt(req.query.limit, 15, 1, 40);
   const hours = clampInt(req.query.hours, 72, 1, 168);
+  const excerpt = clampInt(req.query.excerpt, 500, 100, 2000);
   const qFrag = req.query.q ? ilikeFragment(req.query.q) : '';
   const groupFrag = req.query.group ? ilikeFragment(req.query.group) : '';
 
@@ -74,11 +75,13 @@ export async function nabotoQueryObservationsHandler(req, res) {
     params.push(`%${groupFrag}%`);
     idx++;
   }
+  params.push(excerpt);
+  const excerptIdx = idx++;
   params.push(limit);
 
   const sql = `
     SELECT id, source_group, message_author,
-           left(message_text, 500) AS message_excerpt,
+           left(message_text, $${excerptIdx}) AS message_excerpt,
            created_at
     FROM bot_observations
     WHERE ${conds.join(' AND ')}

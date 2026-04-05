@@ -65,6 +65,12 @@ export function isWhatsAppIngestSessionKey(key) {
   const k = key.toLowerCase();
   if (!k.includes('whatsapp')) return false;
   if (k.includes(':cron:')) return false;
+  if (k.includes(':direct:')) {
+    // Fail-closed: skip DM sessions unless explicitly enabled.
+    // dmPolicy:"disabled" already prevents DM sessions, but this is defense-in-depth.
+    const env = process.env.NABOTO_WA_LIVE_INGEST_DMS;
+    if (!env || env === '0' || env === 'false' || env === 'off') return false;
+  }
   return k.includes('group:') || k.includes(':direct:');
 }
 

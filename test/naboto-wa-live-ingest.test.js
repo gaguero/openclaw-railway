@@ -18,14 +18,15 @@ import {
 } from '../src/naboto-wa-live-ingest.js';
 
 describe('naboto-wa-live-ingest', () => {
-  it('isWhatsAppIngestSessionKey filters groups and direct, skips cron', () => {
+  it('isWhatsAppIngestSessionKey filters groups, skips cron, skips DM by default', () => {
     assert.equal(
       isWhatsAppIngestSessionKey('agent:coordinador:whatsapp:group:120363@g.us'),
       true,
     );
+    // DMs are rejected by default (fail-closed) unless NABOTO_WA_LIVE_INGEST_DMS=1
     assert.equal(
       isWhatsAppIngestSessionKey('agent:coordinador:whatsapp:direct:507@s.whatsapp.net'),
-      true,
+      false,
     );
     assert.equal(
       isWhatsAppIngestSessionKey('agent:c:WhatsApp:Group:120363410193914647@g.us'),
@@ -33,6 +34,17 @@ describe('naboto-wa-live-ingest', () => {
     );
     assert.equal(isWhatsAppIngestSessionKey('agent:coordinador:cron:x:run:y'), false);
     assert.equal(isWhatsAppIngestSessionKey('agent:coordinador:main'), false);
+  });
+
+  it('isWhatsAppIngestSessionKey accepts DM sessions when NABOTO_WA_LIVE_INGEST_DMS=1', () => {
+    const prev = process.env.NABOTO_WA_LIVE_INGEST_DMS;
+    process.env.NABOTO_WA_LIVE_INGEST_DMS = '1';
+    assert.equal(
+      isWhatsAppIngestSessionKey('agent:coordinador:whatsapp:direct:507@s.whatsapp.net'),
+      true,
+    );
+    if (prev === undefined) delete process.env.NABOTO_WA_LIVE_INGEST_DMS;
+    else process.env.NABOTO_WA_LIVE_INGEST_DMS = prev;
   });
 
   it('sourceGroupFromSessionKey extracts JID', () => {

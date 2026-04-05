@@ -98,9 +98,25 @@ El wrapper inyecta config base de WhatsApp al arrancar (`ensureWhatsAppBaseline`
    ```
    Sustituí `8080` si tu `PORT` en Railway es otro. Si `NABOTO_INGEST_SECRET` no está definido en el servicio, configurála en **Variables** (misma que usás para ingest externo).
 
-7. **Verificar**: enviar un mensaje en un grupo allowlist; en segundos debería aparecer en `GET .../api/naboto/query/observations?hours=1` con `detected_type` `wa_live_group` o `wa_live_dm`. Opcional: `openclaw cron list` / `cron run` si mantenés el job de respaldo. El bot **no responde** en grupos en Fase 1 (`SOUL.md`).
+7. **Verificar**: enviar un mensaje en un grupo allowlist; en segundos debería aparecer en `GET .../api/naboto/query/observations?hours=1` con `detected_type` `wa_live_group`. El bot responde con `.` (punto) si te @mencionan, o con texto normal en el grupo test.
 
 **Si el gateway falló con config inválida** (`cron.jobs` o `groups` array): redeploy de esta imagen; al arrancar se elimina `cron.jobs` y se corrige `groups` si venía como array. Luego completá allowlist de grupos y verificación (pasos 4–7).
+
+### Graduación de grupos (respuesta normal uno a uno)
+
+Conforme el agente se entrena para responder correctamente en un grupo, se lo "gradúa" para que deje de responder con `.` y use respuesta normal:
+
+1. En **Railway → Variables**, agregar el JID del grupo a `NABOTO_WA_REPLY_GROUPS_ONLY` (separado por coma si hay más de uno):
+   ```
+   NABOTO_WA_REPLY_GROUPS_ONLY=120363410193914647@g.us,120363NEW_GROUP@g.us
+   ```
+2. **Redeploy** del servicio OpenClaw — el gateway automáticamente:
+   - Actualiza `openclaw.json` con `requireMention: true` para todos los grupos
+   - Inyecta en `SOUL.md` los JIDs graduados con permiso de respuesta normal
+   - El bloque inyectado reemplaza al anterior (idempotente)
+3. **Verificar** enviando una mención en el grupo graduado → debe responder con texto útil; en otros grupos sigue respondiendo con `.`.
+
+> El grupo de prueba (`NABOTO_WA_EMERGENCY_TEST_GROUP_ONLY=1`) siempre está graduado. El resto comienza en modo `.` hasta ser graduado explícitamente.
 
 ### Fase 2: Bot activo (número NaBoTo oficial)
 

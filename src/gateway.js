@@ -150,8 +150,9 @@ function ensureWhatsAppBaseline(config) {
   if (!Array.isArray(wa.groupAllowFrom)) { wa.groupAllowFrom = ['*']; changed = true; }
   if (wa.historyLimit === undefined) { wa.historyLimit = 500; changed = true; }
   if (wa.sendReadReceipts === undefined) { wa.sendReadReceipts = false; changed = true; }
-  if (wa.reactionLevel === undefined) { wa.reactionLevel = 'off'; changed = true; }
-  if (changed) console.log('Applied NaBoTo WhatsApp baseline (Phase 1: silent observer)');
+  // reactionLevel is not a valid OpenClaw WA config key — strip it if present
+  if (wa.reactionLevel !== undefined) { delete wa.reactionLevel; changed = true; }
+  if (changed) console.log('Applied NaBoTo WhatsApp baseline (dev phase)');
   return changed;
 }
 

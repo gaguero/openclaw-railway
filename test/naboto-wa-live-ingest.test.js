@@ -14,6 +14,7 @@ import {
   detectWaMediaKind,
   extractWaCaptionAndMeta,
   buildWaLiveObservationBody,
+  previewItemsNewSincePrevious,
 } from '../src/naboto-wa-live-ingest.js';
 
 describe('naboto-wa-live-ingest', () => {
@@ -60,6 +61,21 @@ describe('naboto-wa-live-ingest', () => {
       extractTextFromMessageContent([{ type: 'text', text: 'a' }, { type: 'text', text: 'b' }]),
       'a\nb',
     );
+  });
+
+  it('previewItemsNewSincePrevious diffs transcript tail', () => {
+    const a = { role: 'user', text: 'a' };
+    const b = { role: 'user', text: 'b' };
+    const c = { role: 'user', text: 'c' };
+    const r0 = previewItemsNewSincePrevious(undefined, [a, b]);
+    assert.deepEqual(r0.newItems, [a, b]);
+    assert.deepEqual(r0.nextSigs, ['user|a', 'user|b']);
+    const r1 = previewItemsNewSincePrevious(r0.nextSigs, [a, b]);
+    assert.deepEqual(r1.newItems, []);
+    assert.deepEqual(r1.nextSigs, ['user|a', 'user|b']);
+    const r2 = previewItemsNewSincePrevious(['user|a', 'user|b'], [b, c]);
+    assert.deepEqual(r2.newItems, [c]);
+    assert.deepEqual(r2.nextSigs, ['user|b', 'user|c']);
   });
 
   it('normalizeTranscriptRow skips assistant', () => {

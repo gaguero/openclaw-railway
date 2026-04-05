@@ -1,9 +1,14 @@
 /**
  * NaBoTo — persist WhatsApp transcript rows to bot_observations in near real time.
- * Subscribes to gateway WebSocket `session.message` events (no LLM).
+ * 1) OpenClaw internal hook `message:preprocessed` (`hooks/naboto-wa-observations` → HTTP ingest) when enabled.
+ * 2) WebSocket `session.message` when the gateway emits it.
+ * 3) Fallback: periodic `sessions.preview` RPC (tail of transcript) — WA often buffers context
+ *    without emitting `session.message`, so WS alone can miss rows.
  *
  * Disable: NABOTO_WA_LIVE_INGEST=0
  * NABOTO_WA_SESSION_REFRESH_MS: re-run sessions.list + subscribe (default 60000). 0 = off.
+ * NABOTO_WA_PREVIEW_POLL_MS: `sessions.preview` interval (default 25000). 0 = off.
+ * NABOTO_WA_PREVIEW_LIMIT / NABOTO_WA_PREVIEW_MAX_CHARS: passed to `sessions.preview` (defaults 30 / 2000).
  * NABOTO_WA_LIVE_INGEST_DEBUG=1: log session.message payloads missing session key.
  */
 
@@ -21,6 +26,27 @@ function sessionRefreshIntervalMs() {
   const n = Number(v);
   if (Number.isFinite(n) && n > 0) return n;
   return 60_000;
+}
+
+/** Poll transcript tail via `sessions.preview`. 0 = rely on WS only. */
+function previewPollIntervalMs() {
+  const v = process.env.NABOTO_WA_PREVIEW_POLL_MS;
+  if (v === '0' || v === 'false' || v === 'off') return 0;
+  const n = Number(v);
+  if (Number.isFinite(n) && n > 0) return n;
+  return 25_000;
+}
+
+function previewRpcLimit() {
+  const n = Number(process.env.NABOTO_WA_PREVIEW_LIMIT);
+  if (Number.isFinite(n) && n >= 1 && n <= 50) return Math.floor(n);
+  return 30;
+}
+
+function previewRpcMaxChars() {
+  const n = Number(process.env.NABOTO_WA_PREVIEW_MAX_CHARS);
+  if (Number.isFinite(n) && n >= 20 && n <= 2000) return Math.floor(n);
+  return 2000;
 }
 
 /** @returns {boolean} */
@@ -157,6 +183,35 @@ export function truncateObservationText(s, maxLen = NABOTO_MAX_MESSAGE_TEXT) {
   const head = maxLen - note.length;
   if (head < 200) return t.slice(0, maxLen);
   return t.slice(0, head) + note;
+}
+
+/**
+ * Diff tail of `sessions.preview` items so we only ingest new rows (and survive dedupe clearing).
+ * @param {string[] | undefined} prevSigs
+ * @param {Array<{ role?: string, text?: string }>} items
+ * @returns {{ newItems: Array<{ role?: string, text?: string }>, nextSigs: string[] }}
+ */
+export function previewItemsNewSincePrevious(prevSigs, items) {
+  if (!Array.isArray(items) || items.length === 0) {
+    return { newItems: [], nextSigs: Array.isArray(prevSigs) ? [...prevSigs] : [] };
+  }
+  const currSigs = items.map((it) => `${String(it?.role ?? '')}|${String(it?.text ?? '')}`);
+  const prev = Array.isArray(prevSigs) ? prevSigs : [];
+  let k = 0;
+  for (let tryK = Math.min(prev.length, currSigs.length); tryK >= 1; tryK -= 1) {
+    let ok = true;
+    for (let i = 0; i < tryK; i += 1) {
+      if (prev[prev.length - tryK + i] !== currSigs[i]) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) {
+      k = tryK;
+      break;
+    }
+  }
+  return { newItems: items.slice(k), nextSigs: currSigs };
 }
 
 /**
@@ -342,6 +397,62 @@ async function maybeIngestSessionMessage(pool, sessionKey, payload, dedupe) {
 }
 
 /**
+ * Ingest only preview rows that appeared since the last poll for this session (tail overlap diff).
+ * @param {import('pg').Pool} pool
+ * @param {string} sessionKey
+ * @param {Array<{ role?: string, text?: string }>} items
+ * @param {Set<string>} dedupe
+ * @param {Map<string, string[]>} tailSigsByKey
+ */
+async function ingestPreviewItemsForSession(pool, sessionKey, items, dedupe, tailSigsByKey) {
+  if (!isWhatsAppIngestSessionKey(sessionKey)) return;
+  const prev = tailSigsByKey.get(sessionKey);
+  const { newItems, nextSigs } = previewItemsNewSincePrevious(prev, items);
+  tailSigsByKey.set(sessionKey, nextSigs);
+  for (const item of newItems) {
+    const rawMsg = { role: item.role, content: item.text };
+    await maybeIngestSessionMessage(pool, sessionKey, { message: rawMsg }, dedupe);
+  }
+}
+
+/**
+ * @param {import('pg').Pool} pool
+ * @param {(method: string, params?: object, timeoutMs?: number) => Promise<unknown>} rpc
+ * @param {Iterable<string>} subscribedKeys
+ * @param {Set<string>} dedupe
+ * @param {Map<string, string[]>} tailSigsByKey
+ */
+async function pollSessionsPreviewForWhatsapp(pool, rpc, subscribedKeys, dedupe, tailSigsByKey) {
+  const keys = [...subscribedKeys].filter(isWhatsAppIngestSessionKey);
+  if (keys.length === 0) return;
+  const limit = previewRpcLimit();
+  const maxChars = previewRpcMaxChars();
+  for (let i = 0; i < keys.length; i += 64) {
+    const chunk = keys.slice(i, i + 64);
+    let res;
+    try {
+      res = await rpc('sessions.preview', { keys: chunk, limit, maxChars }, 30_000);
+    } catch (e) {
+      console.warn('[naboto-wa-live-ingest] sessions.preview failed', e.message);
+      continue;
+    }
+    const previews = res && typeof res === 'object' ? res.previews : null;
+    if (!Array.isArray(previews)) continue;
+    for (const pr of previews) {
+      const key = typeof pr.key === 'string' ? pr.key : null;
+      if (!key || pr.status === 'missing' || pr.status === 'error') continue;
+      const items = pr.items;
+      if (!Array.isArray(items) || items.length === 0) continue;
+      try {
+        await ingestPreviewItemsForSession(pool, key, items, dedupe, tailSigsByKey);
+      } catch (e) {
+        console.warn('[naboto-wa-live-ingest] preview ingest', key, e.message);
+      }
+    }
+  }
+}
+
+/**
  * @param {(method: string, params: object) => Promise<unknown>} rpc
  * @param {Set<string>} subscribed
  */
@@ -389,11 +500,16 @@ function runOneConnection(pool) {
   return new Promise((resolve) => {
     const token = getGatewayToken();
     const refreshMs = sessionRefreshIntervalMs();
+    const previewPollMs = previewPollIntervalMs();
     const wsUrl = `ws://127.0.0.1:${INTERNAL}`;
     const dedupe = new Set();
     const subscribedKeys = new Set();
+    /** Last `sessions.preview` tail signatures per session (overlap diff). */
+    const previewTailSigsByKey = new Map();
     /** @type {ReturnType<typeof setInterval> | null} */
     let sessionRefreshTimer = null;
+    /** @type {ReturnType<typeof setInterval> | null} */
+    let previewPollTimer = null;
 
     /** Connect uses id "1"; RPC ids must start at 2 to avoid collision. */
     let reqCounter = 1;
@@ -535,6 +651,22 @@ function runOneConnection(pool) {
                   );
               }, refreshMs);
             }
+            if (previewPollMs > 0) {
+              const runPreview = () =>
+                pollSessionsPreviewForWhatsapp(pool, rpc, subscribedKeys, dedupe, previewTailSigsByKey).catch(
+                  (e) => console.warn('[naboto-wa-live-ingest] preview poll', e.message),
+                );
+              setTimeout(runPreview, 2500);
+              previewPollTimer = setInterval(runPreview, previewPollMs);
+              console.log(
+                '[naboto-wa-live-ingest] sessions.preview poll every',
+                previewPollMs,
+                'ms (limit',
+                previewRpcLimit(),
+                'maxChars',
+                previewRpcMaxChars() + ')',
+              );
+            }
           })
           .catch((e) => console.error('[naboto-wa-live-ingest] bootstrap failed', e.message));
       }
@@ -549,6 +681,11 @@ function runOneConnection(pool) {
         clearInterval(sessionRefreshTimer);
         sessionRefreshTimer = null;
       }
+      if (previewPollTimer) {
+        clearInterval(previewPollTimer);
+        previewPollTimer = null;
+      }
+      previewTailSigsByKey.clear();
       cleanupPending(new Error('ws closed'));
       wsRef = null;
       resolve();

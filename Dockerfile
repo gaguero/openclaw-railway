@@ -128,6 +128,9 @@ COPY docs/naboto/ /app/docs/naboto/
 # Copy pre-bundled skills (Railway-optimized)
 COPY skills/ /bundled-skills/
 
+# OpenClaw internal hooks (gateway): WA → bot_observations via message:preprocessed
+COPY hooks/ /app/hooks/
+
 # WA export parser + fixtures (admin API: /api/naboto/admin/wa-parse, wa-jsonl-ingest)
 COPY scripts/wa-groups-parse-lib.mjs /app/scripts/wa-groups-parse-lib.mjs
 COPY scripts/fixtures/ /app/scripts/fixtures/

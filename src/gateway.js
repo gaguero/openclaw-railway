@@ -66,6 +66,64 @@ function applyNabotoSkillEntry(prev) {
 /** Skills that need NABOTO_WRAPPER_PORT for exec + curl to the wrapper HTTP API */
 const NABOTO_DB_SKILLS = ['naboto-query-context', 'naboto-wa-ingest'];
 
+const NABOTO_INTERNAL_HOOKS_DIR = '/app/hooks';
+
+/**
+ * Enable OpenClaw internal hook `naboto-wa-observations` (message:preprocessed → POST /api/naboto/observations).
+ * @param {object} config
+ * @returns {boolean} true if openclaw.json hooks section was mutated
+ */
+function applyNabotoWaObservationsHookConfig(config) {
+  const off =
+    process.env.NABOTO_WA_HOOK_INGEST === '0' ||
+    process.env.NABOTO_WA_HOOK_INGEST === 'false' ||
+    process.env.NABOTO_WA_HOOK_INGEST === 'off';
+  const canEnable = Boolean(process.env.DATABASE_URL && process.env.NABOTO_INGEST_SECRET) && !off;
+
+  config.hooks = config.hooks || {};
+  let hi = config.hooks.internal;
+  if (!hi || typeof hi !== 'object') hi = {};
+  config.hooks.internal = hi;
+
+  const entryName = 'naboto-wa-observations';
+  let changed = false;
+
+  if (!canEnable) {
+    const prev = hi.entries?.[entryName];
+    if (prev && prev.enabled !== false) {
+      hi.entries = hi.entries || {};
+      hi.entries[entryName] = { ...prev, enabled: false };
+      changed = true;
+    }
+    return changed;
+  }
+
+  if (hi.enabled !== true) {
+    hi.enabled = true;
+    changed = true;
+  }
+  hi.load = hi.load && typeof hi.load === 'object' ? hi.load : {};
+  const dirs = Array.isArray(hi.load.extraDirs) ? [...hi.load.extraDirs] : [];
+  if (!dirs.includes(NABOTO_INTERNAL_HOOKS_DIR)) {
+    hi.load.extraDirs = dirs.concat(NABOTO_INTERNAL_HOOKS_DIR);
+    changed = true;
+  }
+
+  hi.entries = hi.entries || {};
+  const prevEntry = hi.entries[entryName];
+  if (!prevEntry || prevEntry.enabled !== true) {
+    hi.entries[entryName] = { ...(prevEntry && typeof prevEntry === 'object' ? prevEntry : {}), enabled: true };
+    changed = true;
+  }
+
+  if (changed) {
+    console.log(
+      'NaBoTo: internal hook naboto-wa-observations enabled (message:preprocessed → /api/naboto/observations)',
+    );
+  }
+  return changed;
+}
+
 /**
  * Ensure WhatsApp channel baseline config for NaBoTo Phase 1 (silent observer).
  * Only sets defaults — never overwrites user-set values.
@@ -1008,6 +1066,8 @@ export async function startGateway() {
     );
   }
 
+  applyNabotoWaObservationsHookConfig(config);
+
   writeFileSync(configFile, JSON.stringify(config, null, 2));
 
   // Start the gateway
@@ -1380,9 +1440,27 @@ async function runPostStartupTasks(configFile, context = '') {
           console.warn(`config.set RPC for NaBoTo DB skills failed${logSuffix}: ${rpcErr.message}`);
         }
       }
-    } catch (e) {
-      console.warn(`Failed to check/re-apply NaBoTo DB skills${logSuffix}: ${e.message}`);
+  } catch (e) {
+    console.warn(`Failed to check/re-apply NaBoTo DB skills${logSuffix}: ${e.message}`);
     }
+  }
+
+  // 2a. Re-apply NaBoTo WA observations internal hook (gateway may strip hooks.internal on startup)
+  try {
+    const liveConfig = JSON.parse(readFileSync(configFile, 'utf-8'));
+    if (applyNabotoWaObservationsHookConfig(liveConfig)) {
+      writeFileSync(configFile, JSON.stringify(liveConfig, null, 2));
+      console.log(`Re-applied naboto-wa-observations hook config${logSuffix} (file)`);
+      try {
+        const { gatewayRPC } = await import('./gateway-rpc.js');
+        await gatewayRPC('config.set', { raw: JSON.stringify(liveConfig) });
+        console.log(`Pushed NaBoTo hook config to gateway via RPC${logSuffix}`);
+      } catch (rpcErr) {
+        console.warn(`config.set RPC for NaBoTo hooks failed${logSuffix}: ${rpcErr.message}`);
+      }
+    }
+  } catch (e) {
+    console.warn(`Failed to re-apply NaBoTo WA hook config${logSuffix}: ${e.message}`);
   }
 
   // 2b. Re-apply any user-installed skills found on disk

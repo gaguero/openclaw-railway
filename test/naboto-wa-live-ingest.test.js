@@ -15,6 +15,7 @@ import {
   extractWaCaptionAndMeta,
   buildWaLiveObservationBody,
   previewItemsNewSincePrevious,
+  isPreviewMetadataRow,
 } from '../src/naboto-wa-live-ingest.js';
 
 describe('naboto-wa-live-ingest', () => {
@@ -187,5 +188,13 @@ describe('naboto-wa-live-ingest', () => {
 
   it('buildWaLiveObservationBody skips assistant', () => {
     assert.equal(buildWaLiveObservationBody({ role: 'assistant', content: 'x' }, sk), null);
+  });
+
+  it('isPreviewMetadataRow filters OpenClaw synthetic context rows', () => {
+    assert.equal(isPreviewMetadataRow({ text: 'Conversation info (untrusted metadata): ...' }), true);
+    assert.equal(isPreviewMetadataRow({ text: 'Sender (untrusted metadata): Juan' }), true);
+    assert.equal(isPreviewMetadataRow({ text: 'hola como estas' }), false);
+    assert.equal(isPreviewMetadataRow({ text: '' }), false);
+    assert.equal(isPreviewMetadataRow(null), false);
   });
 });

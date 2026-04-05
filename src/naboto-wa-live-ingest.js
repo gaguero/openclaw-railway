@@ -410,12 +410,37 @@ async function maybeIngestSessionMessage(pool, sessionKey, payload, dedupe) {
  * @param {Set<string>} dedupe
  * @param {Map<string, string[]>} tailSigsByKey
  */
+/**
+ * OpenClaw injects synthetic context rows into session transcripts that are not real WA messages.
+ * These must be filtered before DB ingest.
+ * @param {object} item
+ * @returns {boolean}
+ */
+export function isPreviewMetadataRow(item) {
+  if (!item) return false;
+  const text = String(item.text ?? '');
+  if (!text) return false;
+  // OpenClaw synthetic context prefixes (injected by the WA plugin, not real messages)
+  const SYNTHETIC_PREFIXES = [
+    'Conversation info (untrusted metadata)',
+    'Sender (untrusted metadata)',
+    'System context:',
+    '[OpenClaw context]',
+    '[context:',
+  ];
+  for (const pfx of SYNTHETIC_PREFIXES) {
+    if (text.startsWith(pfx)) return true;
+  }
+  return false;
+}
+
 async function ingestPreviewItemsForSession(pool, sessionKey, items, dedupe, tailSigsByKey) {
   if (!isWhatsAppIngestSessionKey(sessionKey)) return;
   const prev = tailSigsByKey.get(sessionKey);
   const { newItems, nextSigs } = previewItemsNewSincePrevious(prev, items);
   tailSigsByKey.set(sessionKey, nextSigs);
   for (const item of newItems) {
+    if (isPreviewMetadataRow(item)) continue;
     const rawMsg = { role: item.role, content: item.text };
     await maybeIngestSessionMessage(pool, sessionKey, { message: rawMsg }, dedupe);
   }

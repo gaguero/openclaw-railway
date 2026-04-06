@@ -476,12 +476,22 @@ async function pollSessionsPreviewForWhatsapp(pool, rpc, subscribedKeys, dedupe,
       continue;
     }
     const previews = res && typeof res === 'object' ? res.previews : null;
-    if (!Array.isArray(previews)) continue;
+    if (!Array.isArray(previews)) {
+      console.warn('[naboto-wa-live-ingest] sessions.preview unexpected shape', JSON.stringify(res)?.slice(0, 200));
+      continue;
+    }
     for (const pr of previews) {
       const key = typeof pr.key === 'string' ? pr.key : null;
-      if (!key || pr.status === 'missing' || pr.status === 'error') continue;
+      if (!key || pr.status === 'missing' || pr.status === 'error') {
+        if (pr.status === 'missing' || pr.status === 'error') console.log('[naboto-wa-live-ingest] preview skip', key, pr.status);
+        continue;
+      }
       const items = pr.items;
-      if (!Array.isArray(items) || items.length === 0) continue;
+      if (!Array.isArray(items) || items.length === 0) {
+        console.log('[naboto-wa-live-ingest] preview empty items for', key);
+        continue;
+      }
+      console.log('[naboto-wa-live-ingest] preview', key, 'items:', items.length);
       try {
         await ingestPreviewItemsForSession(pool, key, items, dedupe, tailSigsByKey);
       } catch (e) {

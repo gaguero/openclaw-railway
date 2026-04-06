@@ -5,6 +5,8 @@
  * - Simple Mode (default): Dashboard with status hero, quick stats, integrations,
  *   activity feed, memory, settings, and sidebar controls
  * - Advanced Mode: xterm.js terminal with quick command buttons
+ *
+ * Build stamp: 2026-04-06 — force Docker layer refresh (Railway stale ui-page parse fix).
  */
 
 import { getLangSelectorCSS, getLangSelectorHTML, getI18nBootstrapJS } from './i18n.js';

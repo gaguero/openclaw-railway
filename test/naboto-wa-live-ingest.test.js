@@ -195,4 +195,12 @@ describe('naboto-wa-live-ingest', () => {
   it('buildWaLiveObservationBody skips assistant', () => {
     assert.equal(buildWaLiveObservationBody({ role: 'assistant', content: 'x' }, sk), null);
   });
+
+  it('buildWaLiveObservationBody from preview allows assistant role', () => {
+    const b = buildWaLiveObservationBody({ role: 'assistant', content: 'hola grupo' }, sk, {
+      fromPreviewPolling: true,
+    });
+    assert.ok(b);
+    assert.equal(b.message_text, 'hola grupo');
+  });
 });

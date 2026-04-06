@@ -10,6 +10,7 @@
  * NABOTO_WA_PREVIEW_POLL_MS: `sessions.preview` interval (default 25000). 0 = off.
  * NABOTO_WA_PREVIEW_LIMIT / NABOTO_WA_PREVIEW_MAX_CHARS: passed to `sessions.preview` (defaults 30 / 2000).
  * NABOTO_WA_LIVE_INGEST_DEBUG=1: log session.message payloads missing session key.
+ * NABOTO_WA_PREVIEW_STRICT_ROLES=1: in sessions.preview polling, skip role=assistant (legacy; default allows assistant — WA context rows often use assistant).
  */
 
 import WebSocket from 'ws';
@@ -299,16 +300,25 @@ export function extractWaCaptionAndMeta(msg) {
   return parts.join(' | ').trim();
 }
 
+function previewPollingStrictAssistantRole() {
+  const v = process.env.NABOTO_WA_PREVIEW_STRICT_ROLES;
+  return v === '1' || v === 'true' || v === 'yes';
+}
+
 /**
  * Build DB row fields from a gateway transcript row (best-effort for WA quirks).
  * @param {object} rawMsg
  * @param {string} sessionKey
+ * @param {{ fromPreviewPolling?: boolean }} [options] fromPreviewPolling: from `sessions.preview` tail — often labels context as role=assistant; default ingests those rows unless NABOTO_WA_PREVIEW_STRICT_ROLES=1.
  * @returns {{ source_group: string, message_author: string | null, message_text: string, detected_type: string, requires_review?: boolean } | null}
  */
-export function buildWaLiveObservationBody(rawMsg, sessionKey) {
+export function buildWaLiveObservationBody(rawMsg, sessionKey, options = {}) {
   if (!rawMsg || typeof rawMsg !== 'object') return null;
   const row = normalizeTranscriptRow(rawMsg);
-  if (row.role === 'assistant' || row.role === 'tool' || row.role === 'system') return null;
+  if (row.role === 'tool' || row.role === 'system') return null;
+  const fromPreview = Boolean(options.fromPreviewPolling);
+  const skipAssistant = !fromPreview || previewPollingStrictAssistantRole();
+  if (skipAssistant && row.role === 'assistant') return null;
 
   const base = detectedTypeForSessionKey(sessionKey);
   const sg = sourceGroupFromSessionKey(sessionKey);
@@ -388,14 +398,15 @@ function sessionKeysFromListPayload(payload) {
  * @param {string} sessionKey
  * @param {object} payload
  * @param {Set<string>} dedupe
+ * @param {{ fromPreviewPolling?: boolean }} [buildOpts]
  */
-async function maybeIngestSessionMessage(pool, sessionKey, payload, dedupe) {
+async function maybeIngestSessionMessage(pool, sessionKey, payload, dedupe, buildOpts = {}) {
   if (!isWhatsAppIngestSessionKey(sessionKey)) return;
 
   const rawMsg = messageObjectFromEventPayload(payload);
   if (!rawMsg) return;
 
-  const body = buildWaLiveObservationBody(rawMsg, sessionKey);
+  const body = buildWaLiveObservationBody(rawMsg, sessionKey, buildOpts);
   if (!body) return;
 
   const dk = `${sessionKey}|${body.detected_type}|${body.message_text.slice(0, 240)}`;
@@ -475,7 +486,9 @@ async function ingestPreviewItemsForSession(pool, sessionKey, items, dedupe, tai
     }
     if (isMeta) continue;
     const rawMsg = { role: item.role, content: stripped || raw };
-    await maybeIngestSessionMessage(pool, sessionKey, { message: rawMsg }, dedupe);
+    await maybeIngestSessionMessage(pool, sessionKey, { message: rawMsg }, dedupe, {
+      fromPreviewPolling: true,
+    });
   }
 }
 

@@ -47,7 +47,8 @@ export function parseCommaJids(raw) {
 export function extractWhatsAppGroupJid(conversationId, groupId, sessionKey) {
   const tryOne = (s) => {
     if (!s || typeof s !== 'string') return null;
-    const m = s.match(/(\d{10,25}@g\.us)/i);
+    // Standard JID: digits@g.us; legacy / multi-device: digits-digits@g.us
+    const m = s.match(/([\d-]{8,100}@g\.us)/i);
     return m ? m[1].toLowerCase() : null;
   };
   return (
@@ -124,6 +125,7 @@ export function buildObservationPayload(ctx, sessionKey) {
     (typeof ctx.bodyForAgent === 'string' && ctx.bodyForAgent.trim()) ||
     (typeof ctx.transcript === 'string' && ctx.transcript.trim()) ||
     (typeof ctx.body === 'string' && ctx.body.trim()) ||
+    (typeof ctx.content === 'string' && ctx.content.trim()) ||
     '';
 
   const author =
@@ -161,10 +163,20 @@ export function buildObservationPayload(ctx, sessionKey) {
   };
 }
 
+let warnedMissingIngestSecret = false;
+
 function postIngest(body) {
   const secret = process.env.NABOTO_INGEST_SECRET;
   const port = process.env.NABOTO_WRAPPER_PORT || process.env.PORT || '8080';
-  if (!secret) return;
+  if (!secret) {
+    if (!warnedMissingIngestSecret) {
+      warnedMissingIngestSecret = true;
+      console.warn(
+        '[naboto-wa-observations-hook] NABOTO_INGEST_SECRET unset — cannot POST /api/naboto/observations (set in Railway)',
+      );
+    }
+    return;
+  }
 
   const url = `http://127.0.0.1:${port}/api/naboto/observations`;
   const ac = new AbortController();
@@ -195,7 +207,10 @@ function postIngest(body) {
 /** @param {any} event */
 export default async function handler(event) {
   try {
-    if (!event || event.type !== 'message' || event.action !== 'preprocessed') return;
+    if (!event || event.type !== 'message') return;
+    // `message:preprocessed` — enriched body. `message:received` — raw inbound; needed when the gateway
+    // stores group lines for context without running preprocess (silent / no-mention), per OpenClaw hook docs.
+    if (event.action !== 'preprocessed' && event.action !== 'received') return;
     const ctx = event.context;
     if (!ctx || typeof ctx !== 'object') return;
 

@@ -21,10 +21,29 @@ describe('naboto-wa-observations hook', () => {
       extractWhatsAppGroupJid(undefined, undefined, 'agent:x:whatsapp:group:120363024587546650@g.us'),
       '120363024587546650@g.us',
     );
+    assert.equal(
+      extractWhatsAppGroupJid('whatsapp:group:50766665461-1635102767@g.us', undefined, ''),
+      '50766665461-1635102767@g.us',
+    );
   });
 
   it('extractSenderDigits', () => {
     assert.equal(extractSenderDigits('whatsapp:user:50762114762', undefined), '50762114762');
+  });
+
+  it('buildObservationPayload uses content for message:received shape', () => {
+    const p = buildObservationPayload(
+      {
+        channelId: 'whatsapp',
+        isGroup: true,
+        conversationId: 'whatsapp:group:120363024587546650@g.us',
+        content: 'texto recibido',
+        senderName: 'Bob',
+      },
+      'k',
+    );
+    assert.ok(p);
+    assert.equal(p.message_text, 'texto recibido');
   });
 
   it('buildObservationPayload skips non-whatsapp', () => {

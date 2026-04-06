@@ -16,6 +16,7 @@ import {
   buildWaLiveObservationBody,
   previewItemsNewSincePrevious,
   isPreviewMetadataRow,
+  stripPreviewMetadataHeaders,
 } from '../src/naboto-wa-live-ingest.js';
 
 describe('naboto-wa-live-ingest', () => {
@@ -190,9 +191,22 @@ describe('naboto-wa-live-ingest', () => {
     assert.equal(buildWaLiveObservationBody({ role: 'assistant', content: 'x' }, sk), null);
   });
 
-  it('isPreviewMetadataRow filters OpenClaw synthetic context rows', () => {
-    assert.equal(isPreviewMetadataRow({ text: 'Conversation info (untrusted metadata): ...' }), true);
-    assert.equal(isPreviewMetadataRow({ text: 'Sender (untrusted metadata): Juan' }), true);
+  it('stripPreviewMetadataHeaders removes synthetic blocks, keeps real message', () => {
+    const header = 'Conversation info (untrusted metadata):\n```json\n{"a":1}\n```\n\n';
+    const sender = 'Sender (untrusted metadata):\n```json\n{"b":2}\n```\n\n';
+    assert.equal(stripPreviewMetadataHeaders(header + 'hola'), 'hola');
+    assert.equal(stripPreviewMetadataHeaders(header + sender + 'buenos días'), 'buenos días');
+    assert.equal(stripPreviewMetadataHeaders('sin metadata'), 'sin metadata');
+    assert.equal(stripPreviewMetadataHeaders(''), '');
+  });
+
+  it('isPreviewMetadataRow: true only when nothing real remains after stripping', () => {
+    const header = 'Conversation info (untrusted metadata):\n```json\n{"a":1}\n```\n\n';
+    // Pure metadata (nothing after) → skip
+    assert.equal(isPreviewMetadataRow({ text: header }), true);
+    // Has real content after metadata → keep
+    assert.equal(isPreviewMetadataRow({ text: header + 'hola' }), false);
+    // No metadata at all → keep
     assert.equal(isPreviewMetadataRow({ text: 'hola como estas' }), false);
     assert.equal(isPreviewMetadataRow({ text: '' }), false);
     assert.equal(isPreviewMetadataRow(null), false);

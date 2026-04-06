@@ -411,8 +411,22 @@ async function maybeIngestSessionMessage(pool, sessionKey, payload, dedupe) {
  * @param {Map<string, string[]>} tailSigsByKey
  */
 /**
- * OpenClaw injects synthetic context rows into session transcripts that are not real WA messages.
- * These must be filtered before DB ingest.
+ * OpenClaw WA plugin prepends synthetic context blocks to each message in the session transcript:
+ *   "Conversation info (untrusted metadata):\n```json\n{...}\n```\n\n"
+ *   "Sender (untrusted metadata):\n```json\n{...}\n```\n\n"
+ * Strip these headers and return only the actual user message text.
+ * @param {string} text
+ * @returns {string}
+ */
+export function stripPreviewMetadataHeaders(text) {
+  if (!text) return text;
+  // Match one or more metadata blocks at the start of the text
+  const BLOCK_RE = /^(?:(?:Conversation info|Sender) \(untrusted metadata\):\n```[^\n]*\n[\s\S]*?\n```\n\n)+/;
+  return text.replace(BLOCK_RE, '');
+}
+
+/**
+ * Returns true only if the item text is PURELY synthetic metadata with no real message after it.
  * @param {object} item
  * @returns {boolean}
  */
@@ -420,18 +434,8 @@ export function isPreviewMetadataRow(item) {
   if (!item) return false;
   const text = String(item.text ?? '');
   if (!text) return false;
-  // OpenClaw synthetic context prefixes (injected by the WA plugin, not real messages)
-  const SYNTHETIC_PREFIXES = [
-    'Conversation info (untrusted metadata)',
-    'Sender (untrusted metadata)',
-    'System context:',
-    '[OpenClaw context]',
-    '[context:',
-  ];
-  for (const pfx of SYNTHETIC_PREFIXES) {
-    if (text.startsWith(pfx)) return true;
-  }
-  return false;
+  const stripped = stripPreviewMetadataHeaders(text);
+  return !stripped.trim();
 }
 
 async function ingestPreviewItemsForSession(pool, sessionKey, items, dedupe, tailSigsByKey) {
@@ -441,7 +445,8 @@ async function ingestPreviewItemsForSession(pool, sessionKey, items, dedupe, tai
   tailSigsByKey.set(sessionKey, nextSigs);
   for (const item of newItems) {
     if (isPreviewMetadataRow(item)) continue;
-    const rawMsg = { role: item.role, content: item.text };
+    const stripped = stripPreviewMetadataHeaders(String(item.text ?? ''));
+    const rawMsg = { role: item.role, content: stripped || item.text };
     await maybeIngestSessionMessage(pool, sessionKey, { message: rawMsg }, dedupe);
   }
 }

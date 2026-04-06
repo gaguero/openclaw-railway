@@ -420,10 +420,11 @@ async function maybeIngestSessionMessage(pool, sessionKey, payload, dedupe) {
  */
 export function stripPreviewMetadataHeaders(text) {
   if (!text) return text;
-  // Match one or more metadata blocks at the start of the text.
-  // Handles: "Conversation info (untrusted metadata):", "Sender (untrusted metadata):",
-  // "Replied message (untrusted, for context):" and similar OpenClaw-injected context blocks.
-  const BLOCK_RE = /^(?:(?:Conversation info|Sender) \(untrusted metadata\):\n```[^\n]*\n[\s\S]*?\n```\n\n|Replied message \(untrusted, for context\):\n```[^\n]*\n[\s\S]*?\n```\n\n)+/;
+  // Match one or more OpenClaw-injected context blocks at the start of the text.
+  // Pattern: "<label> (untrusted...):\n```...\n...\n```\n\n"
+  // Covers: "Conversation info (untrusted metadata)", "Sender (untrusted metadata)",
+  // "Replied message (untrusted, for context)", "Chat history since last reply (untrusted, for context)", etc.
+  const BLOCK_RE = /^(?:[^\n]+ \(untrusted[^)]*\):\n```[^\n]*\n[\s\S]*?\n```\n\n)+/;
   return text.replace(BLOCK_RE, '');
 }
 

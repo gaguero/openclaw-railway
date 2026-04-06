@@ -65,12 +65,6 @@ export function isWhatsAppIngestSessionKey(key) {
   const k = key.toLowerCase();
   if (!k.includes('whatsapp')) return false;
   if (k.includes(':cron:')) return false;
-  if (k.includes(':direct:')) {
-    // Fail-closed: skip DM sessions unless explicitly enabled.
-    // dmPolicy:"disabled" already prevents DM sessions, but this is defense-in-depth.
-    const env = process.env.NABOTO_WA_LIVE_INGEST_DMS;
-    if (!env || env === '0' || env === 'false' || env === 'off') return false;
-  }
   return k.includes('group:') || k.includes(':direct:');
 }
 
@@ -192,16 +186,29 @@ export function truncateObservationText(s, maxLen = NABOTO_MAX_MESSAGE_TEXT) {
 }
 
 /**
+ * Raw text from a `sessions.preview` row (OpenClaw may use `text` or `content`).
+ * @param {object | null | undefined} item
+ * @returns {string}
+ */
+export function previewItemRawText(item) {
+  if (!item || typeof item !== 'object') return '';
+  if (typeof item.text === 'string') return item.text;
+  if (typeof item.content === 'string') return item.content;
+  if (typeof item.body === 'string') return item.body;
+  return '';
+}
+
+/**
  * Diff tail of `sessions.preview` items so we only ingest new rows (and survive dedupe clearing).
  * @param {string[] | undefined} prevSigs
- * @param {Array<{ role?: string, text?: string }>} items
- * @returns {{ newItems: Array<{ role?: string, text?: string }>, nextSigs: string[] }}
+ * @param {Array<{ role?: string, text?: string, content?: string }>} items
+ * @returns {{ newItems: Array<{ role?: string, text?: string, content?: string }>, nextSigs: string[] }}
  */
 export function previewItemsNewSincePrevious(prevSigs, items) {
   if (!Array.isArray(items) || items.length === 0) {
     return { newItems: [], nextSigs: Array.isArray(prevSigs) ? [...prevSigs] : [] };
   }
-  const currSigs = items.map((it) => `${String(it?.role ?? '')}|${String(it?.text ?? '')}`);
+  const currSigs = items.map((it) => `${String(it?.role ?? '')}|${previewItemRawText(it)}`);
   const prev = Array.isArray(prevSigs) ? prevSigs : [];
   let k = 0;
   for (let tryK = Math.min(prev.length, currSigs.length); tryK >= 1; tryK -= 1) {
@@ -399,60 +406,75 @@ async function maybeIngestSessionMessage(pool, sessionKey, payload, dedupe) {
   const ins = await insertBotObservation(pool, body);
   if (!ins.ok) {
     console.warn('[naboto-wa-live-ingest] insert failed', ins.status, ins.json?.error || ins.json);
+  } else if (process.env.NABOTO_WA_INGEST_LOG_INSERTS === '1') {
+    console.log('[naboto-wa-live-ingest] inserted', ins.id, sessionKey.slice(-48));
   }
 }
 
 /**
- * Ingest only preview rows that appeared since the last poll for this session (tail overlap diff).
- * @param {import('pg').Pool} pool
- * @param {string} sessionKey
- * @param {Array<{ role?: string, text?: string }>} items
- * @param {Set<string>} dedupe
- * @param {Map<string, string[]>} tailSigsByKey
- */
-/**
- * OpenClaw WA plugin prepends synthetic context blocks to each message in the session transcript:
- *   "Conversation info (untrusted metadata):\n```json\n{...}\n```\n\n"
- *   "Sender (untrusted metadata):\n```json\n{...}\n```\n\n"
+ * OpenClaw WA plugin prepends synthetic context blocks to each message in the session transcript.
  * Strip these headers and return only the actual user message text.
  * @param {string} text
  * @returns {string}
  */
 export function stripPreviewMetadataHeaders(text) {
   if (!text) return text;
-  // Match one or more OpenClaw-injected context blocks at the start of the text.
-  // Pattern: "<label> (untrusted...):\n```...\n...\n```\n\n"
-  // Covers: "Conversation info (untrusted metadata)", "Sender (untrusted metadata)",
-  // "Replied message (untrusted, for context)", "Chat history since last reply (untrusted, for context)", etc.
   const BLOCK_RE = /^(?:[^\n]+ \(untrusted[^)]*\):\n```[^\n]*\n[\s\S]*?\n```\n\n)+/;
   return text.replace(BLOCK_RE, '');
 }
 
 /**
- * Returns true only if the item text is PURELY synthetic metadata with no real message after it.
+ * True when the preview row is only synthetic metadata (no user-visible text after stripping).
  * @param {object} item
  * @returns {boolean}
  */
 export function isPreviewMetadataRow(item) {
   if (!item) return false;
-  const text = String(item.text ?? '');
+  const text = previewItemRawText(item);
   if (!text) return false;
   const stripped = stripPreviewMetadataHeaders(text);
   return !stripped.trim();
 }
 
+/**
+ * Ingest only preview rows that appeared since the last poll for this session (tail overlap diff).
+ * @param {import('pg').Pool} pool
+ * @param {string} sessionKey
+ * @param {Set<string>} dedupe
+ * @param {Map<string, string[]>} tailSigsByKey
+ */
 async function ingestPreviewItemsForSession(pool, sessionKey, items, dedupe, tailSigsByKey) {
   if (!isWhatsAppIngestSessionKey(sessionKey)) return;
   const prev = tailSigsByKey.get(sessionKey);
   const { newItems, nextSigs } = previewItemsNewSincePrevious(prev, items);
   tailSigsByKey.set(sessionKey, nextSigs);
-  console.log('[naboto-wa-live-ingest] ingest', sessionKey.slice(-30), 'newItems:', newItems.length, 'of', items.length);
+  const debug = process.env.NABOTO_WA_LIVE_INGEST_DEBUG === '1';
+  if (debug && newItems.length > 0) {
+    console.log(
+      '[naboto-wa-live-ingest] preview batch',
+      sessionKey.slice(-40),
+      'newItems:',
+      newItems.length,
+      'of',
+      items.length,
+    );
+  }
   for (const item of newItems) {
     const isMeta = isPreviewMetadataRow(item);
-    const stripped = stripPreviewMetadataHeaders(String(item.text ?? ''));
-    console.log('[naboto-wa-live-ingest]  item role:', item.role, 'isMeta:', isMeta, 'stripped[:60]:', stripped.slice(0,60).replace(/\n/g,'|'));
+    const raw = previewItemRawText(item);
+    const stripped = stripPreviewMetadataHeaders(raw);
+    if (debug) {
+      console.log(
+        '[naboto-wa-live-ingest] preview item role:',
+        item.role,
+        'isMeta:',
+        isMeta,
+        'stripped[:60]:',
+        stripped.slice(0, 60).replace(/\n/g, '|'),
+      );
+    }
     if (isMeta) continue;
-    const rawMsg = { role: item.role, content: stripped || item.text };
+    const rawMsg = { role: item.role, content: stripped || raw };
     await maybeIngestSessionMessage(pool, sessionKey, { message: rawMsg }, dedupe);
   }
 }
@@ -479,22 +501,12 @@ async function pollSessionsPreviewForWhatsapp(pool, rpc, subscribedKeys, dedupe,
       continue;
     }
     const previews = res && typeof res === 'object' ? res.previews : null;
-    if (!Array.isArray(previews)) {
-      console.warn('[naboto-wa-live-ingest] sessions.preview unexpected shape', JSON.stringify(res)?.slice(0, 200));
-      continue;
-    }
+    if (!Array.isArray(previews)) continue;
     for (const pr of previews) {
       const key = typeof pr.key === 'string' ? pr.key : null;
-      if (!key || pr.status === 'missing' || pr.status === 'error') {
-        if (pr.status === 'missing' || pr.status === 'error') console.log('[naboto-wa-live-ingest] preview skip', key, pr.status);
-        continue;
-      }
+      if (!key || pr.status === 'missing' || pr.status === 'error') continue;
       const items = pr.items;
-      if (!Array.isArray(items) || items.length === 0) {
-        console.log('[naboto-wa-live-ingest] preview empty items for', key);
-        continue;
-      }
-      console.log('[naboto-wa-live-ingest] preview', key, 'items:', items.length);
+      if (!Array.isArray(items) || items.length === 0) continue;
       try {
         await ingestPreviewItemsForSession(pool, key, items, dedupe, tailSigsByKey);
       } catch (e) {

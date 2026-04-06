@@ -14,21 +14,20 @@ import {
   detectWaMediaKind,
   extractWaCaptionAndMeta,
   buildWaLiveObservationBody,
+  previewItemRawText,
   previewItemsNewSincePrevious,
-  isPreviewMetadataRow,
   stripPreviewMetadataHeaders,
 } from '../src/naboto-wa-live-ingest.js';
 
 describe('naboto-wa-live-ingest', () => {
-  it('isWhatsAppIngestSessionKey filters groups, skips cron, skips DM by default', () => {
+  it('isWhatsAppIngestSessionKey filters groups and direct, skips cron', () => {
     assert.equal(
       isWhatsAppIngestSessionKey('agent:coordinador:whatsapp:group:120363@g.us'),
       true,
     );
-    // DMs are rejected by default (fail-closed) unless NABOTO_WA_LIVE_INGEST_DMS=1
     assert.equal(
       isWhatsAppIngestSessionKey('agent:coordinador:whatsapp:direct:507@s.whatsapp.net'),
-      false,
+      true,
     );
     assert.equal(
       isWhatsAppIngestSessionKey('agent:c:WhatsApp:Group:120363410193914647@g.us'),
@@ -36,17 +35,6 @@ describe('naboto-wa-live-ingest', () => {
     );
     assert.equal(isWhatsAppIngestSessionKey('agent:coordinador:cron:x:run:y'), false);
     assert.equal(isWhatsAppIngestSessionKey('agent:coordinador:main'), false);
-  });
-
-  it('isWhatsAppIngestSessionKey accepts DM sessions when NABOTO_WA_LIVE_INGEST_DMS=1', () => {
-    const prev = process.env.NABOTO_WA_LIVE_INGEST_DMS;
-    process.env.NABOTO_WA_LIVE_INGEST_DMS = '1';
-    assert.equal(
-      isWhatsAppIngestSessionKey('agent:coordinador:whatsapp:direct:507@s.whatsapp.net'),
-      true,
-    );
-    if (prev === undefined) delete process.env.NABOTO_WA_LIVE_INGEST_DMS;
-    else process.env.NABOTO_WA_LIVE_INGEST_DMS = prev;
   });
 
   it('sourceGroupFromSessionKey extracts JID', () => {
@@ -90,6 +78,23 @@ describe('naboto-wa-live-ingest', () => {
     const r2 = previewItemsNewSincePrevious(['user|a', 'user|b'], [b, c]);
     assert.deepEqual(r2.newItems, [c]);
     assert.deepEqual(r2.nextSigs, ['user|b', 'user|c']);
+  });
+
+  it('previewItemRawText and previewItemsNewSincePrevious use content when text missing', () => {
+    assert.equal(previewItemRawText({ text: 'x' }), 'x');
+    assert.equal(previewItemRawText({ content: 'y' }), 'y');
+    assert.equal(previewItemRawText({ body: 'z' }), 'z');
+    const a = { role: 'user', content: 'a' };
+    const b = { role: 'user', content: 'b' };
+    const r = previewItemsNewSincePrevious(undefined, [a, b]);
+    assert.deepEqual(r.nextSigs, ['user|a', 'user|b']);
+  });
+
+  it('stripPreviewMetadataHeaders removes OpenClaw untrusted blocks', () => {
+    const prefix =
+      'Conversation info (untrusted metadata):\n```json\n{}\n```\n\n' +
+      'Sender (untrusted metadata):\n```json\n{}\n```\n\n';
+    assert.equal(stripPreviewMetadataHeaders(prefix + 'Hola equipo'), 'Hola equipo');
   });
 
   it('normalizeTranscriptRow skips assistant', () => {
@@ -189,26 +194,5 @@ describe('naboto-wa-live-ingest', () => {
 
   it('buildWaLiveObservationBody skips assistant', () => {
     assert.equal(buildWaLiveObservationBody({ role: 'assistant', content: 'x' }, sk), null);
-  });
-
-  it('stripPreviewMetadataHeaders removes synthetic blocks, keeps real message', () => {
-    const header = 'Conversation info (untrusted metadata):\n```json\n{"a":1}\n```\n\n';
-    const sender = 'Sender (untrusted metadata):\n```json\n{"b":2}\n```\n\n';
-    assert.equal(stripPreviewMetadataHeaders(header + 'hola'), 'hola');
-    assert.equal(stripPreviewMetadataHeaders(header + sender + 'buenos días'), 'buenos días');
-    assert.equal(stripPreviewMetadataHeaders('sin metadata'), 'sin metadata');
-    assert.equal(stripPreviewMetadataHeaders(''), '');
-  });
-
-  it('isPreviewMetadataRow: true only when nothing real remains after stripping', () => {
-    const header = 'Conversation info (untrusted metadata):\n```json\n{"a":1}\n```\n\n';
-    // Pure metadata (nothing after) → skip
-    assert.equal(isPreviewMetadataRow({ text: header }), true);
-    // Has real content after metadata → keep
-    assert.equal(isPreviewMetadataRow({ text: header + 'hola' }), false);
-    // No metadata at all → keep
-    assert.equal(isPreviewMetadataRow({ text: 'hola como estas' }), false);
-    assert.equal(isPreviewMetadataRow({ text: '' }), false);
-    assert.equal(isPreviewMetadataRow(null), false);
   });
 });

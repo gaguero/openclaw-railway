@@ -60,6 +60,7 @@ import {
   nabotoWaParseGetHintHandler,
 } from './naboto-wa-ingest-admin.js';
 import { stopNabotoWaLiveIngest } from './naboto-wa-live-ingest.js';
+import { getNabotoPool } from './naboto-pool.js';
 
 // Configuration
 const PORT = process.env.PORT || 8080;
@@ -1743,6 +1744,20 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`Setup wizard: http://localhost:${PORT}/onboard`);
   console.log(`Lite panel: http://localhost:${PORT}/lite`);
   console.log(`Health check: http://localhost:${PORT}/health`);
+
+  (async () => {
+    const p = getNabotoPool();
+    if (!p) {
+      console.log('[naboto] DATABASE_URL not set — Postgres APIs and WA live ingest are disabled');
+      return;
+    }
+    try {
+      await p.query('SELECT 1');
+      console.log('[naboto] Postgres OK (pool connected)');
+    } catch (err) {
+      console.error('[naboto] Postgres connection failed:', err?.message || err);
+    }
+  })();
 
   // Check if gateway should auto-start (if already configured)
   const configFile = join(OPENCLAW_STATE_DIR, 'openclaw.json');

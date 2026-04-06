@@ -163,7 +163,7 @@ export function buildObservationPayload(ctx, sessionKey) {
 
 function postIngest(body) {
   const secret = process.env.NABOTO_INGEST_SECRET;
-  const port = process.env.PORT || '8080';
+  const port = process.env.NABOTO_WRAPPER_PORT || process.env.PORT || '8080';
   if (!secret) return;
 
   const url = `http://127.0.0.1:${port}/api/naboto/observations`;

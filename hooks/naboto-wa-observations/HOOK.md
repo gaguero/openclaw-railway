@@ -12,7 +12,7 @@ metadata:
 
 Runs on **`message:preprocessed`** inside the OpenClaw gateway (after media/link enrichment). Posts JSON to the Railway wrapper:
 
-`POST http://127.0.0.1:$PORT/api/naboto/observations` with `Authorization: Bearer $NABOTO_INGEST_SECRET`.
+`POST http://127.0.0.1:${NABOTO_WRAPPER_PORT:-$PORT}/api/naboto/observations` with `Authorization: Bearer $NABOTO_INGEST_SECRET` (el handler usa `NABOTO_WRAPPER_PORT` primero, igual que el spawn del gateway en `gateway.js`).
 
 ## Env (Railway)
 

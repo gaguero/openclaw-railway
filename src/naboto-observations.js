@@ -136,6 +136,7 @@ export async function nabotoObservationsHandler(req, res) {
 
 /**
  * Optional readiness: verifies DB connectivity (no auth).
+ * Set `NABOTO_DB_HEALTH_COUNTS=1` to include `bot_observations_total` and `bot_observations_24h` (ops/debug only).
  */
 export async function nabotoDbHealthHandler(_req, res) {
   const p = getNabotoPool();
@@ -144,7 +145,16 @@ export async function nabotoDbHealthHandler(_req, res) {
   }
   try {
     await p.query('SELECT 1');
-    return res.json({ ok: true, table: 'reachable' });
+    const body = { ok: true, table: 'reachable' };
+    if (process.env.NABOTO_DB_HEALTH_COUNTS === '1') {
+      const total = await p.query('SELECT count(*)::int AS n FROM bot_observations');
+      const h24 = await p.query(
+        `SELECT count(*)::int AS n FROM bot_observations WHERE created_at > NOW() - INTERVAL '24 hours'`,
+      );
+      body.bot_observations_total = total.rows[0]?.n ?? 0;
+      body.bot_observations_24h = h24.rows[0]?.n ?? 0;
+    }
+    return res.json(body);
   } catch (e) {
     return res.status(503).json({ ok: false, reason: e.message });
   }

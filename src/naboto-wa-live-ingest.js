@@ -446,9 +446,12 @@ async function ingestPreviewItemsForSession(pool, sessionKey, items, dedupe, tai
   const prev = tailSigsByKey.get(sessionKey);
   const { newItems, nextSigs } = previewItemsNewSincePrevious(prev, items);
   tailSigsByKey.set(sessionKey, nextSigs);
+  console.log('[naboto-wa-live-ingest] ingest', sessionKey.slice(-30), 'newItems:', newItems.length, 'of', items.length);
   for (const item of newItems) {
-    if (isPreviewMetadataRow(item)) continue;
+    const isMeta = isPreviewMetadataRow(item);
     const stripped = stripPreviewMetadataHeaders(String(item.text ?? ''));
+    console.log('[naboto-wa-live-ingest]  item role:', item.role, 'isMeta:', isMeta, 'stripped[:60]:', stripped.slice(0,60).replace(/\n/g,'|'));
+    if (isMeta) continue;
     const rawMsg = { role: item.role, content: stripped || item.text };
     await maybeIngestSessionMessage(pool, sessionKey, { message: rawMsg }, dedupe);
   }

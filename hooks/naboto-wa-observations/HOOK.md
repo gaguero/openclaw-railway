@@ -25,5 +25,8 @@ Runs on **`message:preprocessed`** (cuerpo enriquecido) y **`message:received`**
 | `NABOTO_WA_HOOK_GROUP_ALLOWLIST=1` | Only groups whose JID is in `NABOTO_WA_ALLOWLIST_GROUP_JIDS` (+ hotel premerge list) |
 | `NABOTO_WA_HOOK_INGEST_DMS=0` | Skip WhatsApp DMs |
 | `NABOTO_WA_HOOK_DM_ALLOWLIST` | Comma-separated E.164-ish numbers; if set, only those senders for DMs |
+| `NABOTO_WA_HOOK_INGEST_DEBUG` | `1` / `true`: log each hook invocation, skip reason (`group_jid_unparsed`, `group_not_allowlisted`, …), dedupe, and successful ingest HTTP status (temporary diagnostics) |
 
 Works alongside **`naboto-wa-live-ingest.js`** (WS + `sessions.preview` fallback); dedupe at DB layer is best-effort via `messageId` when present.
+
+**Diagnose missing rows:** set `NABOTO_WA_HOOK_INGEST_DEBUG=1` on the OpenClaw service, send one test message in an allowlisted group, then read deploy logs for `[naboto-wa-observations-hook]`. Also set `NABOTO_WA_LIVE_INGEST_SKIP_LOG=1` (see `naboto-wa-live-ingest.js` header) to see why preview/WS rows were skipped.

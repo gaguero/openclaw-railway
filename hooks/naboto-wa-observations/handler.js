@@ -10,6 +10,11 @@ const dedupe = new Map();
 const DEDUPE_TTL_MS = 6 * 60 * 60 * 1000;
 const DEDUPE_MAX = 8000;
 
+function hookIngestDebugEnabled() {
+  const v = process.env.NABOTO_WA_HOOK_INGEST_DEBUG;
+  return v === '1' || v === 'true' || v === 'yes';
+}
+
 function pruneDedupe() {
   const now = Date.now();
   for (const [k, t] of dedupe) {
@@ -72,29 +77,24 @@ export function extractSenderDigits(from, senderId) {
 }
 
 /**
- * @param {{
- *   channelId?: string,
- *   isGroup?: boolean,
- *   bodyForAgent?: string,
- *   body?: string,
- *   transcript?: string,
- *   conversationId?: string,
- *   groupId?: string,
- *   from?: string,
- *   senderId?: string,
- *   senderName?: string,
- *   messageId?: string,
- * }} ctx
- * @param {string} sessionKey
+ * Same rules as {@link buildObservationPayload}, but returns a skip reason for diagnostics.
+ * @returns {{ ok: true, payload: object } | { ok: false, reason: string, detail?: string }}
  */
-export function buildObservationPayload(ctx, sessionKey) {
+export function tryBuildObservationPayload(ctx, sessionKey) {
+  if (!ctx || typeof ctx !== 'object') {
+    return { ok: false, reason: 'no_context', detail: '' };
+  }
+
   const channelId = String(ctx.channelId || '').toLowerCase();
-  if (channelId !== 'whatsapp') return null;
+  if (channelId !== 'whatsapp') {
+    return { ok: false, reason: 'channel_not_whatsapp', detail: channelId || '(empty)' };
+  }
 
   const groupJid = extractWhatsAppGroupJid(ctx.conversationId, ctx.groupId, sessionKey);
   const isGroup = Boolean(ctx.isGroup || groupJid);
 
-  const groupAllowEnv = process.env.NABOTO_WA_HOOK_GROUP_ALLOWLIST === '1' ||
+  const groupAllowEnv =
+    process.env.NABOTO_WA_HOOK_GROUP_ALLOWLIST === '1' ||
     process.env.NABOTO_WA_HOOK_GROUP_ALLOWLIST === 'true' ||
     process.env.NABOTO_WA_HOOK_GROUP_ALLOWLIST === 'yes';
 
@@ -103,12 +103,21 @@ export function buildObservationPayload(ctx, sessionKey) {
       ...parseCommaJids(process.env.NABOTO_WA_ALLOWLIST_GROUP_JIDS).map((j) => j.toLowerCase()),
       ...PREMERGED_GROUP_JIDS.map((j) => j.toLowerCase()),
     ]);
-    if (!groupJid || !allowed.has(groupJid)) return null;
+    if (!groupJid) {
+      return {
+        ok: false,
+        reason: 'group_jid_unparsed',
+        detail: 'no JID in conversationId/groupId/sessionKey',
+      };
+    }
+    if (!allowed.has(groupJid)) {
+      return { ok: false, reason: 'group_not_allowlisted', detail: groupJid };
+    }
   }
 
   if (!isGroup) {
     if (process.env.NABOTO_WA_HOOK_INGEST_DMS === '0' || process.env.NABOTO_WA_HOOK_INGEST_DMS === 'false') {
-      return null;
+      return { ok: false, reason: 'dm_ingest_disabled', detail: '' };
     }
     const dmAllow = parseCommaJids(process.env.NABOTO_WA_HOOK_DM_ALLOWLIST);
     if (dmAllow.length > 0) {
@@ -117,7 +126,9 @@ export function buildObservationPayload(ctx, sessionKey) {
         const d = raw.replace(/\D/g, '');
         return d && digits && (digits.endsWith(d) || d.endsWith(digits));
       });
-      if (!ok) return null;
+      if (!ok) {
+        return { ok: false, reason: 'dm_not_in_allowlist', detail: digits || '(no digits)' };
+      }
     }
   }
 
@@ -155,12 +166,36 @@ export function buildObservationPayload(ctx, sessionKey) {
   const detectedType = isGroup ? 'wa_live_group' : 'wa_live_dm';
 
   return {
-    source_group: sourceGroup.slice(0, 500),
-    message_author: author ? author.slice(0, 500) : null,
-    message_text: messageText,
-    detected_type: detectedType,
-    requires_review: requiresReview,
+    ok: true,
+    payload: {
+      source_group: sourceGroup.slice(0, 500),
+      message_author: author ? author.slice(0, 500) : null,
+      message_text: messageText,
+      detected_type: detectedType,
+      requires_review: requiresReview,
+    },
   };
+}
+
+/**
+ * @param {{
+ *   channelId?: string,
+ *   isGroup?: boolean,
+ *   bodyForAgent?: string,
+ *   body?: string,
+ *   transcript?: string,
+ *   conversationId?: string,
+ *   groupId?: string,
+ *   from?: string,
+ *   senderId?: string,
+ *   senderName?: string,
+ *   messageId?: string,
+ * }} ctx
+ * @param {string} sessionKey
+ */
+export function buildObservationPayload(ctx, sessionKey) {
+  const r = tryBuildObservationPayload(ctx, sessionKey);
+  return r.ok ? r.payload : null;
 }
 
 let warnedMissingIngestSecret = false;
@@ -193,10 +228,14 @@ function postIngest(body) {
   })
     .then(async (res) => {
       clearTimeout(t);
-      if (!res.ok) {
-        const txt = await res.text().catch(() => '');
-        console.warn('[naboto-wa-observations-hook] ingest HTTP', res.status, txt.slice(0, 200));
+      if (res.ok) {
+        if (hookIngestDebugEnabled()) {
+          console.log('[naboto-wa-observations-hook] ingest ok', res.status);
+        }
+        return;
       }
+      const txt = await res.text().catch(() => '');
+      console.warn('[naboto-wa-observations-hook] ingest HTTP', res.status, txt.slice(0, 200));
     })
     .catch((e) => {
       clearTimeout(t);
@@ -207,18 +246,46 @@ function postIngest(body) {
 /** @param {any} event */
 export default async function handler(event) {
   try {
-    if (!event || event.type !== 'message') return;
+    const dbg = hookIngestDebugEnabled();
+    if (!event || event.type !== 'message') {
+      if (dbg) console.log('[naboto-wa-observations-hook] skip event.type', event?.type);
+      return;
+    }
     // `message:preprocessed` — enriched body. `message:received` — raw inbound; needed when the gateway
     // stores group lines for context without running preprocess (silent / no-mention), per OpenClaw hook docs.
-    if (event.action !== 'preprocessed' && event.action !== 'received') return;
+    if (event.action !== 'preprocessed' && event.action !== 'received') {
+      if (dbg) console.log('[naboto-wa-observations-hook] skip event.action', event.action);
+      return;
+    }
     const ctx = event.context;
-    if (!ctx || typeof ctx !== 'object') return;
+    if (!ctx || typeof ctx !== 'object') {
+      if (dbg) console.log('[naboto-wa-observations-hook] skip no context object');
+      return;
+    }
 
-    const payload = buildObservationPayload(ctx, event.sessionKey || '');
-    if (!payload) return;
+    const sk = event.sessionKey || '';
+    if (dbg) {
+      console.log('[naboto-wa-observations-hook] event', event.action, 'sessionKeyTail', sk.slice(-56));
+    }
+
+    const built = tryBuildObservationPayload(ctx, sk);
+    if (!built.ok) {
+      if (dbg) {
+        console.log(
+          '[naboto-wa-observations-hook] skip payload',
+          built.reason,
+          built.detail ? `detail=${built.detail}` : '',
+        );
+      }
+      return;
+    }
+    const payload = built.payload;
 
     const dk = `${payload.source_group}|${ctx.messageId || ''}|${payload.message_text.slice(0, 160)}`;
-    if (dedupeHit(dk)) return;
+    if (dedupeHit(dk)) {
+      if (dbg) console.log('[naboto-wa-observations-hook] skip dedupe', dk.slice(0, 140));
+      return;
+    }
 
     setImmediate(() => postIngest(payload));
   } catch (e) {

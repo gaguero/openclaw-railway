@@ -10,6 +10,7 @@
  * NABOTO_WA_PREVIEW_POLL_MS: `sessions.preview` interval (default 25000). 0 = off.
  * NABOTO_WA_PREVIEW_LIMIT / NABOTO_WA_PREVIEW_MAX_CHARS: passed to `sessions.preview` (defaults 30 / 2000).
  * NABOTO_WA_LIVE_INGEST_DEBUG=1: log session.message payloads missing session key.
+ * NABOTO_WA_LIVE_INGEST_SKIP_LOG=1: log why a transcript/preview row did not become a bot_observations insert (noisy).
  * NABOTO_WA_PREVIEW_STRICT_ROLES=1: in sessions.preview polling, skip role=assistant (legacy; default allows assistant — WA context rows often use assistant).
  */
 
@@ -55,6 +56,11 @@ export function waLiveIngestEnabled() {
   const v = process.env.NABOTO_WA_LIVE_INGEST;
   if (v === '0' || v === 'false' || v === 'off') return false;
   return Boolean(getNabotoPool());
+}
+
+function liveIngestSkipLogEnabled() {
+  const v = process.env.NABOTO_WA_LIVE_INGEST_SKIP_LOG;
+  return v === '1' || v === 'true' || v === 'yes';
 }
 
 /**
@@ -401,13 +407,38 @@ function sessionKeysFromListPayload(payload) {
  * @param {{ fromPreviewPolling?: boolean }} [buildOpts]
  */
 async function maybeIngestSessionMessage(pool, sessionKey, payload, dedupe, buildOpts = {}) {
-  if (!isWhatsAppIngestSessionKey(sessionKey)) return;
+  if (!isWhatsAppIngestSessionKey(sessionKey)) {
+    if (liveIngestSkipLogEnabled()) {
+      console.log('[naboto-wa-live-ingest] skip_not_wa_session_key', sessionKey.slice(-56));
+    }
+    return;
+  }
 
   const rawMsg = messageObjectFromEventPayload(payload);
-  if (!rawMsg) return;
+  if (!rawMsg) {
+    if (liveIngestSkipLogEnabled()) {
+      console.log('[naboto-wa-live-ingest] skip_no_message_object', sessionKey.slice(-56));
+    }
+    return;
+  }
 
   const body = buildWaLiveObservationBody(rawMsg, sessionKey, buildOpts);
-  if (!body) return;
+  if (!body) {
+    if (liveIngestSkipLogEnabled()) {
+      const row = normalizeTranscriptRow(rawMsg);
+      console.log(
+        '[naboto-wa-live-ingest] skip_no_body',
+        sessionKey.slice(-48),
+        'role',
+        row.role,
+        'textLen',
+        row.text.length,
+        'fromPreview',
+        Boolean(buildOpts.fromPreviewPolling),
+      );
+    }
+    return;
+  }
 
   const dk = `${sessionKey}|${body.detected_type}|${body.message_text.slice(0, 240)}`;
   if (dedupe.has(dk)) return;
@@ -455,7 +486,12 @@ export function isPreviewMetadataRow(item) {
  * @param {Map<string, string[]>} tailSigsByKey
  */
 async function ingestPreviewItemsForSession(pool, sessionKey, items, dedupe, tailSigsByKey) {
-  if (!isWhatsAppIngestSessionKey(sessionKey)) return;
+  if (!isWhatsAppIngestSessionKey(sessionKey)) {
+    if (liveIngestSkipLogEnabled()) {
+      console.log('[naboto-wa-live-ingest] preview skip_not_wa_session_key', sessionKey.slice(-56));
+    }
+    return;
+  }
   const prev = tailSigsByKey.get(sessionKey);
   const { newItems, nextSigs } = previewItemsNewSincePrevious(prev, items);
   tailSigsByKey.set(sessionKey, nextSigs);
@@ -484,7 +520,17 @@ async function ingestPreviewItemsForSession(pool, sessionKey, items, dedupe, tai
         stripped.slice(0, 60).replace(/\n/g, '|'),
       );
     }
-    if (isMeta) continue;
+    if (isMeta) {
+      if (liveIngestSkipLogEnabled()) {
+        console.log(
+          '[naboto-wa-live-ingest] skip_preview_metadata',
+          sessionKey.slice(-40),
+          'role',
+          item?.role,
+        );
+      }
+      continue;
+    }
     const rawMsg = { role: item.role, content: stripped || raw };
     await maybeIngestSessionMessage(pool, sessionKey, { message: rawMsg }, dedupe, {
       fromPreviewPolling: true,
